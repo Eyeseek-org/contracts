@@ -1,7 +1,7 @@
 const { ethers, network } = require("hardhat")
 const {expect} = require("chai")
 
-let user, Token, Donation, fund
+let user, donationToken, donation, fund
 
 
 beforeEach(async function () {

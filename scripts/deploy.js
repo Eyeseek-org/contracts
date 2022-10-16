@@ -1,6 +1,6 @@
 async function main() {
   const Token = await ethers.getContractFactory("Token");
-  const Donator = await ethers.getContractFactory("Donator");
+  const Donator = await ethers.getContractFactory("Funding");
 
   // Start deployment, returning a promise that resolves to a contract object
 //  const TokenDeploy = await Token.deploy();

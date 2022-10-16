@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import "hardhat/console.sol";
 
-contract Donator is Ownable, ReentrancyGuard  {
+contract Funding is Ownable, ReentrancyGuard  {
 
     IERC20 public token;
     IERC20 public usdc;
@@ -130,10 +130,11 @@ contract Donator is Ownable, ReentrancyGuard  {
             }
    }
 
-    function batchDistribute () public {
+    function batchDistribute () public onlyOwner nonReentrant{
         for (uint i=0; i<funds.length; i++) {
             /// @dev TBD - Missing deadline condition
-            if (funds[i].state == 1) {
+            /// @notice - Only active funds with achieved minimum are eligible for distribution
+            if (funds[i].state == 1 && funds[i].balance >= funds[i].level1) {
                 distribute(i);
             }
         }
@@ -143,7 +144,6 @@ contract Donator is Ownable, ReentrancyGuard  {
     
     /// @notice Only admin can distribute rewards
     /// @notice All microfunds, and fund are closed
-    /// @dev - TBD - Missing deadline condition
     function distribute(uint256 _id) public onlyOwner nonReentrant{
         require(funds[_id].state == 1, "Fund is not active");
         if (funds[_id].currency == 0) {
@@ -199,11 +199,11 @@ contract Donator is Ownable, ReentrancyGuard  {
         
     }
 
-    function cancelMicrofund(uint256 _id) public onlyOwner nonReentrant{
+    function cancelFund(uint256 _id) public nonReentrant{
         require(funds[_id].state == 1, "Fund is not active");
         require(token.balanceOf(address(this)) >= funds[_id].balance, "Not enough tokens in the contract");
-       
-        for (uint i=0; i<microFunds.length; i++) {
+        if (msg.sender == microFunds[_id].owner || msg.sender == address(this)) {
+            for (uint i=0; i<microFunds.length; i++) {
              if (microFunds[i].fundId == _id &&  microFunds[i].state == 1) {
         /// @notice Close microfund
         /// @notice Optional piece of code - Send back the remaining amount to the microfund owner
@@ -216,8 +216,22 @@ contract Donator is Ownable, ReentrancyGuard  {
             microFunds[i].state = 2; 
             }
          }
+         /// @dev - TBD two tasks
+         /// @dev - Differentiate currencies between EYE and USDC
          /// @dev - Return all donations to backers 
-         funds[_id].state = 2;
+
+         /// @notice - Ideally project fund should be empty and can be closed
+         if (funds[_id].balance == 0){
+            funds[_id].state = 2;
+         }  else {
+            revert("Problem with calculation");
+        }
+         
+        }
+
+
+       
+
     }
         // ------ ADMIN FUNCTIONS ---------- 
         /// @notice Allow admin to change minimum amount for new projects
