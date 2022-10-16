@@ -1,13 +1,14 @@
-# Sample Hardhat Project
+# Eyeseek funding contracts
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
+This directory contains the contracts for the Eyeseek crowdfunding system. Created with Hardhat 
 
-Try running some of the following tasks:
+## Token contract
+Eye token serves only as temporary token to faucet testnet behavior. Production version will work with stablecoins.
 
-```shell
-npx hardhat help
-npx hardhat test
-GAS_REPORT=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.js
-```
+Mumbai testnet contract: 0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E
+
+## Funding contract
+Funding contract is the main contract for the crowdfunding system. It is responsible for creating and managing funding campaigns. It also handles the funding process and the distribution of funds to the campaign creators.
+
+Mumbai testnet contract: 0xE1956F69Dd62DDf0F2D2E6b7a15087a40ce6c8A4
+
