@@ -8,7 +8,6 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 /// @title Chain donation contract
 /// @author Michal Kazdan
 
-
 import "hardhat/console.sol";
 
 contract Funding is Ownable, ReentrancyGuard  {
@@ -59,10 +58,12 @@ contract Funding is Ownable, ReentrancyGuard  {
 
 
     /// @notice Custom token for value exchange in the project
-    constructor(address tokenAddress, address usdcAddress) {
+    constructor(address tokenAddress, address usdcAddress)  {
         token = IERC20(tokenAddress);
         usdc = IERC20(usdcAddress);
     }
+
+    
 
 
     function createFund(uint256 _level1, uint256 _level2, uint256 _level3, uint256 _level4, uint256 _level5) public {

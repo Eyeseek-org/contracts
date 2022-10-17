@@ -12,3 +12,7 @@ Funding contract is the main contract for the crowdfunding system. It is respons
 
 Mumbai testnet contract: 0x7d0E35013DE926239FA6753B3A4f4225380a1B32
 
+
+## Crosschain contracts - Axelar experiment
+Fantom source contract: 0x71994687371a3AaDc3FfD32366EF349cAb8306Af
+Polygon dest contract: 0x77E3291ff2C02857C9848c96bD27CD0f19bad2af

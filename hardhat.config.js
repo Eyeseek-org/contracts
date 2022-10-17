@@ -20,6 +20,11 @@ module.exports = {
       url: "https://rpc-mumbai.maticvigil.com",
       accounts: [process.env.PRIVATE_KEY]
     },
+    fantom_testnet:{
+      url: "https://rpc.testnet.fantom.network",
+      chainId: 4002,
+      accounts: [process.env.PRIVATE_KEY]
+    },
     localhost: {
       url: "http://127.0.0.1:8545",
       accounts: [process.env.PRIVATE_KEY_LOCAL]
