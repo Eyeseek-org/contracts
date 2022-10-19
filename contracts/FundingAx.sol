@@ -1,37 +1,45 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-/// @title Chain donation contract
+import {IAxelarExecutable} from "./interfaces/IAxelarExecutable.sol";
+import {IAxelarGasService} from "./interfaces/IAxelarGasService.sol";
+import {IAxelarGateway} from "./interfaces/IAxelarGateway.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+/// @title Crosschain donation
 /// @author Michal Kazdan
+/// @notice This contract allows users to donate to a chain of their choice using Axelar
+
+/// FE - https://github.com/jboetticher/multichain-hello-world-interface/blob/main/ethereum/axelar/useAxelarFunction.ts
+/// data - https://github.com/jboetticher/multichain-hello-world-interface/blob/main/ethereum/axelar/axelarHelpers.ts
+
+/// 1. Doplnit kontrakt s Axelarem
+/// 2. Upravit FE s crosschain callem
+/// Pověnovat tomu celý den
+
 
 import "hardhat/console.sol";
 
-contract Funding is Ownable, ReentrancyGuard {
+contract FundingAx is Ownable, ReentrancyGuard, IAxelarExecutable {
+    ///@notice Axelar Events
+    event AxelarGatewaySet(address indexed gateway); //Mumbai 0xBF62ef1486468a6bd26Dd669C06db43dEd5B849B
+
+    // Gas service Mumbai 0xbE406F0189A0B4cf3A05C286473D23791Dd44Cc6
+
     IERC20 public token;
     IERC20 public usdc;
 
     address public feeAddress = 0xc21223249CA28397B4B6541dfFaEcC539BfF0c59;
     uint256 public minAmount = 1000;
-    // uint256 public deadline; // The timespan for crowdfunding to be active
-
-    /// @notice Use modifiers to check when deadline is passed
-    modifier isDeadlinePassed(uint256 _id) {
-        require(
-            block.timestamp < funds[_id].deadline,
-            "Deadline for crowdfunding has passed."
-        );
-        _;
-    }
 
     /// @notice Main crowdfunding fund
     struct Fund {
         uint256 id;
         address owner;
         uint256 balance;
-        uint256 deadline; // Timespan for crowdfunding to be active
         uint256 state; ///@dev 0=Cancelled, 1=Active, 2=Finished
         uint256 currency; /// 0=Eye, 1=USDC
         uint256 level1;
@@ -66,13 +74,16 @@ contract Funding is Ownable, ReentrancyGuard {
     Donate[] public donations;
 
     /// @notice Custom token for value exchange in the project
-    constructor(address tokenAddress, address usdcAddress)  {
+    constructor(
+        address tokenAddress,
+        address usdcAddress,
+        address _gateway
+    ) IAxelarExecutable(_gateway) {
         token = IERC20(tokenAddress);
         usdc = IERC20(usdcAddress);
     }
 
     function createFund(
-        uint256 _deadline,
         uint256 _level1,
         uint256 _level2,
         uint256 _level3,
@@ -83,7 +94,6 @@ contract Funding is Ownable, ReentrancyGuard {
         /// @param _currency - token address, fund could be created in any token, this will be also required for payments // For now always 0
         /// @param _level1 - 1st (minimum) level of donation accomplishment, same works for all levels.
         /// @dev Frontend should handle parameters if no levels required. Level 1-5 have to be filled to max.
-        uint256 deadline = block.timestamp + _deadline;
         require(msg.sender != address(0), "Invalid address");
         require(_level1 > 0, "Invalid amount");
         require(_level1 >= minAmount, "Mininmum amount is set to 1000");
@@ -98,7 +108,6 @@ contract Funding is Ownable, ReentrancyGuard {
                 id: funds.length,
                 state: 1,
                 currency: 0,
-                deadline: deadline,
                 level1: _level1,
                 level2: _level2,
                 level3: _level3,
@@ -106,14 +115,14 @@ contract Funding is Ownable, ReentrancyGuard {
                 level5: _level5
             })
         );
-        emit FundCreated(msg.sender, _level1, funds.length, funds.deadline);
+        emit FundCreated(msg.sender, _level1, funds.length);
     }
 
     function contribute(
         uint256 _amountM,
         uint256 _amountD,
         uint256 _id
-    ) public isDeadlinePassed(_id) {
+    ) public {
         /// @param _amountM - amount of tokens to be sent to microfund
         /// @param _amountD - amount of tokens to be direcly donated
         /// @notice User can create microfund and donate at the same time
@@ -182,11 +191,7 @@ contract Funding is Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < funds.length; i++) {
             /// @dev TBD - Missing deadline condition
             /// @notice - Only active funds with achieved minimum are eligible for distribution
-            if (block.timestamp < funds[i].deadline){
-                continue;
-            }
-            
-            if (funds[i].state == 1 && funds[i].balance >= funds[i].level1 && block.timestamp > funds[i].deadline) {
+            if (funds[i].state == 1 && funds[i].balance >= funds[i].level1) {
                 distribute(i);
             }
         }
@@ -321,11 +326,44 @@ contract Funding is Ownable, ReentrancyGuard {
         }
     }
 
+    // AXELAR INTERNAL METHODS
+        /// @notice 
+    function _executeWithToken(
+        string memory, /*sourceChain*/
+        string memory, /*sourceAddress*/
+        bytes calldata payload,
+        string memory tokenSymbol,
+        uint256 amount
+    ) internal override  {
+        require(
+            keccak256(abi.encodePacked(tokenSymbol)) == keccak256("USDC"),
+            "Only USDC is accepted"
+        );
+  //      require(amount >= 0.0005 ether, "Not enough to transfer!");
+
+        address user = abi.decode(payload, (address));
+        console.log(user);
+        contribute(amount / 2, amount / 2,  0);
+        address tokenAddress = gateway.tokenAddresses(tokenSymbol);
+        IERC20(tokenAddress).transfer(address(this), amount);
+    }
+
+
+
     // ------ ADMIN FUNCTIONS ----------
+
     /// @notice Allow admin to change minimum amount for new projects
     /// @param _min - Minimum amount to create fund with
     function setMinimum(uint256 _min) public onlyOwner {
         minAmount = _min;
+    }
+
+    /// @notice set the Axelar gateway
+    /// @param _gateway - Axelar gateway address
+
+    function setAxelarGateway(address _gateway) external onlyOwner {
+        gateway = IAxelarGateway(_gateway);
+        emit AxelarGatewaySet(_gateway);
     }
 
     // ------ VIEW FUNCTIONS ----------
@@ -416,7 +454,7 @@ contract Funding is Ownable, ReentrancyGuard {
         return (fund.state, fund.level5, fund.balance);
     }
 
-    event FundCreated(address owner, uint256 cap, uint256 id, uint256 deadline);
+    event FundCreated(address owner, uint256 cap, uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId);
     event Donated(address donator, uint256 amount, uint256 fundId);
     event MicroDrained(address owner, uint256 amount, uint256 fundId);
