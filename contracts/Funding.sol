@@ -15,7 +15,6 @@ contract Funding is Ownable, ReentrancyGuard {
 
     address public feeAddress = 0xc21223249CA28397B4B6541dfFaEcC539BfF0c59;
     uint256 public minAmount = 1000;
-    // uint256 public deadline; // The timespan for crowdfunding to be active
 
     /// @notice Use modifiers to check when deadline is passed
     modifier isDeadlinePassed(uint256 _id) {
@@ -66,7 +65,7 @@ contract Funding is Ownable, ReentrancyGuard {
     Donate[] public donations;
 
     /// @notice Custom token for value exchange in the project
-    constructor(address tokenAddress, address usdcAddress)  {
+    constructor(address tokenAddress, address usdcAddress) {
         token = IERC20(tokenAddress);
         usdc = IERC20(usdcAddress);
     }
@@ -106,7 +105,12 @@ contract Funding is Ownable, ReentrancyGuard {
                 level5: _level5
             })
         );
-        emit FundCreated(msg.sender, _level1, funds.length, funds.deadline);
+        emit FundCreated(
+            msg.sender,
+            _level1,
+            funds.length,
+            funds[funds.length].deadline
+        );
     }
 
     function contribute(
@@ -133,8 +137,19 @@ contract Funding is Ownable, ReentrancyGuard {
             revert("Invalid currency");
         }
         /// @notice If donated, fund adds balance and related microfunds are involed
+        ///@dev 0=Donated, 1=Distributed, 2=Refunded
         if (_amountD > 0) {
             funds[_id].balance += _amountD;
+            // Updated the direct donations
+            donations.push(
+                Donate({
+                    id: donations.length,
+                    fundId: _id,
+                    backer: msg.sender,
+                    amount: _amountD,
+                    state: 0
+                })
+            );
             emit Donated(msg.sender, _amountD, _id);
             drainMicro(_id, _amountD);
         }
@@ -180,13 +195,16 @@ contract Funding is Ownable, ReentrancyGuard {
 
     function batchDistribute() public onlyOwner nonReentrant {
         for (uint256 i = 0; i < funds.length; i++) {
-            /// @dev TBD - Missing deadline condition
             /// @notice - Only active funds with achieved minimum are eligible for distribution
-            if (block.timestamp < funds[i].deadline){
+            if (block.timestamp < funds[i].deadline) {
                 continue;
             }
-            
-            if (funds[i].state == 1 && funds[i].balance >= funds[i].level1 && block.timestamp > funds[i].deadline) {
+
+            if (
+                funds[i].state == 1 &&
+                funds[i].balance >= funds[i].level1 &&
+                block.timestamp > funds[i].deadline
+            ) {
                 distribute(i);
             }
         }
@@ -274,6 +292,7 @@ contract Funding is Ownable, ReentrancyGuard {
         }
     }
 
+    ///@dev 0=Cancelled, 1=Active, 2=Finished
     function cancelFund(uint256 _id) public nonReentrant {
         require(funds[_id].state == 1, "Fund is not active");
         require(
@@ -311,6 +330,39 @@ contract Funding is Ownable, ReentrancyGuard {
             /// @dev - TBD two tasks
             /// @dev - Differentiate currencies between EYE and USDC
             /// @dev - Return all donations to backers
+            ///@dev 0=Donated, 1=Distributed, 2=Refunded
+            for (uint256 i = 0; i < donations.length; i++) {
+                if (donations[i].fundId == _id && donations[i].state == 0) {
+                    // refund the backers of the EYE token
+                    if (funds[_id].currency == 0) {
+                        token.approve(address(this), donations[i].amount);
+                        token.transferFrom(
+                            address(this),
+                            donations[_id].backer,
+                            donations[_id].amount
+                        );
+                        donations[i].state = 2;
+                        emit Refunded(
+                            donations[_id].backer,
+                            donations[_id].amount,
+                            _id
+                        );
+                    } else if (funds[_id].currency == 1) {
+                        usdc.approve(address(this), donations[i].amount);
+                        usdc.transferFrom(
+                            address(this),
+                            donations[_id].backer,
+                            donations[_id].amount
+                        );
+                        donations[i].state = 2;
+                        emit Refunded(
+                            donations[_id].backer,
+                            donations[_id].amount,
+                            _id
+                        );
+                    }
+                }
+            }
 
             /// @notice - Ideally project fund should be empty and can be closed
             if (funds[_id].balance == 0) {
@@ -422,6 +474,7 @@ contract Funding is Ownable, ReentrancyGuard {
     event MicroDrained(address owner, uint256 amount, uint256 fundId);
     event MicroClosed(address owner, uint256 cap, uint256 fundId);
     event Distributed(address owner, uint256 balance);
+    event Refunded(address backer, uint256 amount, uint256 fundId);
     event Returned(address microOwner, uint256 balance, address fundOwner);
     event FundingFee(address project, uint256 fee);
 }
