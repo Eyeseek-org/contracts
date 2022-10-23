@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 /// @title Chain donation contract
 /// @author Michal Kazdan
 
+
 import "hardhat/console.sol";
 
 contract Funding is Ownable, ReentrancyGuard {
@@ -14,7 +15,8 @@ contract Funding is Ownable, ReentrancyGuard {
     IERC20 public usdc;
 
     address public feeAddress = 0xc21223249CA28397B4B6541dfFaEcC539BfF0c59;
-    uint256 public minAmount = 1000;
+    uint256 public minAmount = 1;
+    uint256 public platformFee = 1;
 
     /// @notice Use modifiers to check when deadline is passed
     modifier isDeadlinePassed(uint256 _id) {
@@ -51,7 +53,6 @@ contract Funding is Ownable, ReentrancyGuard {
     }
 
     /// @dev Struct for direct donations
-    /// @dev TBD - Needed to refund donations in distribute() function
     struct Donate {
         uint256 id;
         uint256 fundId;
@@ -70,22 +71,18 @@ contract Funding is Ownable, ReentrancyGuard {
         usdc = IERC20(usdcAddress);
     }
 
+    /// @dev temporarily set only 1 level and fixed deadline, to make integration more simple
     function createFund(
-        uint256 _deadline,
-        uint256 _level1,
-        uint256 _level2,
-        uint256 _level3,
-        uint256 _level4,
-        uint256 _level5
+        uint256 _level1
     ) public {
         /// @notice Create a new project to be funded
         /// @param _currency - token address, fund could be created in any token, this will be also required for payments // For now always 0
         /// @param _level1 - 1st (minimum) level of donation accomplishment, same works for all levels.
         /// @dev Frontend should handle parameters if no levels required. Level 1-5 have to be filled to max.
-        uint256 deadline = block.timestamp + _deadline;
+        uint256 deadline = block.timestamp + 15 days;
         require(msg.sender != address(0), "Invalid address");
         require(_level1 > 0, "Invalid amount");
-        require(_level1 >= minAmount, "Mininmum amount is set to 1000");
+        require(_level1 >= minAmount, "Value is lower than minimum possible amount");
         /// @dev Only one active fund per address should be allowed (for now disabled)
         // for (uint256 i = 0; i < funds.length; i++) {
         //    require(funds[i].owner == msg.sender && funds[i].state == 0, "You already have a fund");
@@ -99,10 +96,10 @@ contract Funding is Ownable, ReentrancyGuard {
                 currency: 0,
                 deadline: deadline,
                 level1: _level1,
-                level2: _level2,
-                level3: _level3,
-                level4: _level4,
-                level5: _level5
+                level2: _level1,
+                level3: _level1,
+                level4: _level1,
+                level5: _level1
             })
         );
         emit FundCreated(
@@ -327,13 +324,10 @@ contract Funding is Ownable, ReentrancyGuard {
                     microFunds[i].state = 2;
                 }
             }
-            /// @dev - TBD two tasks
-            /// @dev - Differentiate currencies between EYE and USDC
-            /// @dev - Return all donations to backers
-            ///@dev 0=Donated, 1=Distributed, 2=Refunded
+            ///@dev Fund states - 0=Donated, 1=Distributed, 2=Refunded
             for (uint256 i = 0; i < donations.length; i++) {
                 if (donations[i].fundId == _id && donations[i].state == 0) {
-                    // refund the backers of the EYE token
+                    ///@notice refund the backers of the EYE token
                     if (funds[_id].currency == 0) {
                         token.approve(address(this), donations[i].amount);
                         token.transferFrom(
@@ -348,6 +342,7 @@ contract Funding is Ownable, ReentrancyGuard {
                             _id
                         );
                     } else if (funds[_id].currency == 1) {
+                    ///@notice refund the backers of USDC
                         usdc.approve(address(this), donations[i].amount);
                         usdc.transferFrom(
                             address(this),
@@ -379,6 +374,12 @@ contract Funding is Ownable, ReentrancyGuard {
     function setMinimum(uint256 _min) public onlyOwner {
         minAmount = _min;
     }
+
+    /// @notice Ability to change platform fee without need for contract redeployment
+    function changeFee(uint256 _fee) public onlyOwner {
+        platformFee = _fee;
+    }
+
 
     // ------ VIEW FUNCTIONS ----------
 
@@ -441,6 +442,39 @@ contract Funding is Ownable, ReentrancyGuard {
         return microNumber;
     }
 
+    /// @notice - Calculate number of involved microfunds for specific donation amount
+    /// @param _index - ID of the fund
+    function calcTotalDonations(uint256 _index)
+        public
+        view
+        returns (uint256)
+    {
+        uint256 backerNumber = 0;
+        for (uint256 i = 0; i < donations.length; i++) {
+            if (
+                donations[i].fundId == _index
+            ) {
+                backerNumber++;
+            }
+        }
+        return backerNumber;
+    }
+
+    /// @notice - Get project deadline
+    function getFuddDeadline(uint256 _index) public view returns (uint256) {
+        return funds[_index].deadline;
+    }
+
+    /// @notice - Get project minimal cap
+    function getFundCap(uint256 _index) public view returns (uint256) {
+        return funds[_index].level1;
+    }
+
+    /// @notice - Get project actual backing
+    function getFundBalance(uint256 _index) public view returns (uint256) {
+        return funds[_index].balance;
+    }
+
     /// @notice - Get detail about a microfund
     function getMicroFundInfo(uint256 _index)
         public
@@ -467,6 +501,7 @@ contract Funding is Ownable, ReentrancyGuard {
         Fund storage fund = funds[_index];
         return (fund.state, fund.level5, fund.balance);
     }
+
 
     event FundCreated(address owner, uint256 cap, uint256 id, uint256 deadline);
     event MicroCreated(address owner, uint256 cap, uint256 fundId);
