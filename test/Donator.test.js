@@ -47,8 +47,8 @@ describe("Chain donation testing", async function () {
         const allowance = microfund1 + microfund2 + microfund3 + microfund4 + microfund5 + initial1 + initial2 + initial3
         console.log(allowance)
 
-        await donation.connect(fund).createFund(mainfund, mainfund, mainfund, mainfund,mainfund)
-        await donation.connect(fund).createFund(secondFund, secondFund, secondFund, secondFund, secondFund)
+        await donation.connect(fund).createFund(mainfund)
+        await donation.connect(fund).createFund(secondFund)
         await donationToken.approve(donation.address, allowance, {from: user.address})
          // 3 Inverstors created microfund with initial donation of 20, 1 investor with 0
         await donation.contribute(microfund1,initial1,0, {from: user.address})

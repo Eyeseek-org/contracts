@@ -79,7 +79,7 @@ contract Funding is Ownable, ReentrancyGuard {
         /// @param _currency - token address, fund could be created in any token, this will be also required for payments // For now always 0
         /// @param _level1 - 1st (minimum) level of donation accomplishment, same works for all levels.
         /// @dev Frontend should handle parameters if no levels required. Level 1-5 have to be filled to max.
-        uint256 deadline = block.timestamp + 15 days;
+        uint256 _deadline = block.timestamp + 30 days; 
         require(msg.sender != address(0), "Invalid address");
         require(_level1 > 0, "Invalid amount");
         require(_level1 >= minAmount, "Value is lower than minimum possible amount");
@@ -87,6 +87,7 @@ contract Funding is Ownable, ReentrancyGuard {
         // for (uint256 i = 0; i < funds.length; i++) {
         //    require(funds[i].owner == msg.sender && funds[i].state == 0, "You already have a fund");
         // }
+        console.log(funds.length);
         funds.push(
             Fund({
                 owner: msg.sender,
@@ -94,7 +95,7 @@ contract Funding is Ownable, ReentrancyGuard {
                 id: funds.length,
                 state: 1,
                 currency: 0,
-                deadline: deadline,
+                deadline: _deadline,
                 level1: _level1,
                 level2: _level1,
                 level3: _level1,
