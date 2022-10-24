@@ -61,6 +61,26 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 state; ///@dev 0=Donated, 1=Distributed, 2=Refunded
     }
 
+            TokenFund({
+                owner: msg.sender,
+                balance: 0,
+                id: funds.length,
+                state: 1,
+                deadline: _deadline,
+                level1: _level1
+    /// @dev Struct for token funds
+    struct TokenFund {
+        uint256 id;
+        address owner;
+        uint256 balance;
+        uint256 deadline; // Timespan for crowdfunding to be active
+        uint256 state; ///@dev 0=Cancelled, 1=Active, 2=Finished
+        address tokenAddress;
+        uint256 reward;
+        uint256 level1;
+    }
+    
+    TokenFund[] public TokenFunds;
     Fund[] public funds;
     MicroFund[] public microFunds;
     Donate[] public donations;
@@ -87,7 +107,6 @@ contract Funding is Ownable, ReentrancyGuard {
         // for (uint256 i = 0; i < funds.length; i++) {
         //    require(funds[i].owner == msg.sender && funds[i].state == 0, "You already have a fund");
         // }
-        console.log(funds.length);
         funds.push(
             Fund({
                 owner: msg.sender,
@@ -106,10 +125,41 @@ contract Funding is Ownable, ReentrancyGuard {
         emit FundCreated(
             msg.sender,
             _level1,
-            funds.length,
-            funds[funds.length].deadline
+            funds.length
         );
     }
+
+
+    /// Simple ICO function, experimenting in the contract
+    /// TBD docs, tests, distribute functions, view functions 
+    function createTokenFund (
+        uint256 _level1,
+        uint256 _address,
+        uint256 _amount
+    ) public {
+        uint256 _deadline = block.timestamp + 30 days; 
+        require(_level1 > 0, "Invalid amount");
+        require(_level1 >= minAmount, "Value is lower than minimum possible amount");
+        _address.transferFrom(msg.sender, address(this), _amount;
+        tokenFunds.push(
+            TokenFund({
+                owner: msg.sender,
+                balance: 0,
+                id: tokenFunds.length,
+                state: 1,
+                deadline: _deadline,
+                level1: _level1,
+                tokenAddress: _address,
+                reward: _amount
+            })
+        );
+        emit TokenFundCreated(
+            msg.sender,
+            _level1,
+            tokenFunds.length
+        );
+    }
+    
 
     function contribute(
         uint256 _amountM,
@@ -311,11 +361,6 @@ contract Funding is Ownable, ReentrancyGuard {
                             microFunds[_id].owner,
                             microFunds[_id].cap
                         );
-                        console.log(
-                            "Contract still has %s",
-                            token.balanceOf(address(this)),
-                            i
-                        );
                         emit Returned(
                             microFunds[i].owner,
                             microFunds[_id].cap,
@@ -363,6 +408,7 @@ contract Funding is Ownable, ReentrancyGuard {
             /// @notice - Ideally project fund should be empty and can be closed
             if (funds[_id].balance == 0) {
                 funds[_id].state = 2;
+                emit Cancelled(funds[_id].owner, funds[_id]);
             } else {
                 revert("Problem with calculation");
             }
@@ -504,7 +550,8 @@ contract Funding is Ownable, ReentrancyGuard {
     }
 
 
-    event FundCreated(address owner, uint256 cap, uint256 id, uint256 deadline);
+    event FundCreated(address owner, uint256 cap, uint256 id);
+    event FundCreated(address owner, uint256 cap, uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId);
     event Donated(address donator, uint256 amount, uint256 fundId);
     event MicroDrained(address owner, uint256 amount, uint256 fundId);
@@ -513,4 +560,5 @@ contract Funding is Ownable, ReentrancyGuard {
     event Refunded(address backer, uint256 amount, uint256 fundId);
     event Returned(address microOwner, uint256 balance, address fundOwner);
     event FundingFee(address project, uint256 fee);
+    event Cancelled(address owner, uint256 fundId);
 }
