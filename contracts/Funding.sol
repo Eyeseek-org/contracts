@@ -61,13 +61,6 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 state; ///@dev 0=Donated, 1=Distributed, 2=Refunded
     }
 
-            TokenFund({
-                owner: msg.sender,
-                balance: 0,
-                id: funds.length,
-                state: 1,
-                deadline: _deadline,
-                level1: _level1
     /// @dev Struct for token funds
     struct TokenFund {
         uint256 id;
@@ -80,7 +73,7 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 level1;
     }
     
-    TokenFund[] public TokenFunds;
+    TokenFund[] public tokenFunds;
     Fund[] public funds;
     MicroFund[] public microFunds;
     Donate[] public donations;
@@ -140,7 +133,7 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 _deadline = block.timestamp + 30 days; 
         require(_level1 > 0, "Invalid amount");
         require(_level1 >= minAmount, "Value is lower than minimum possible amount");
-        _address.transferFrom(msg.sender, address(this), _amount;
+        _address.transferFrom(msg.sender, address(this), _amount);
         tokenFunds.push(
             TokenFund({
                 owner: msg.sender,
@@ -550,7 +543,7 @@ contract Funding is Ownable, ReentrancyGuard {
     }
 
 
-    event FundCreated(address owner, uint256 cap, uint256 id);
+    event TokenFundCreated(address owner, uint256 cap, uint256 id);
     event FundCreated(address owner, uint256 cap, uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId);
     event Donated(address donator, uint256 amount, uint256 fundId);
