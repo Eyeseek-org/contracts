@@ -122,38 +122,6 @@ contract Funding is Ownable, ReentrancyGuard {
         );
     }
 
-
-    /// Simple ICO function, experimenting in the contract
-    /// TBD docs, tests, distribute functions, view functions 
-    function createTokenFund (
-        uint256 _level1,
-        uint256 _address,
-        uint256 _amount
-    ) public {
-        uint256 _deadline = block.timestamp + 30 days; 
-        require(_level1 > 0, "Invalid amount");
-        require(_level1 >= minAmount, "Value is lower than minimum possible amount");
-        _address.transferFrom(msg.sender, address(this), _amount);
-        tokenFunds.push(
-            TokenFund({
-                owner: msg.sender,
-                balance: 0,
-                id: tokenFunds.length,
-                state: 1,
-                deadline: _deadline,
-                level1: _level1,
-                tokenAddress: _address,
-                reward: _amount
-            })
-        );
-        emit TokenFundCreated(
-            msg.sender,
-            _level1,
-            tokenFunds.length
-        );
-    }
-    
-
     function contribute(
         uint256 _amountM,
         uint256 _amountD,
@@ -401,7 +369,7 @@ contract Funding is Ownable, ReentrancyGuard {
             /// @notice - Ideally project fund should be empty and can be closed
             if (funds[_id].balance == 0) {
                 funds[_id].state = 2;
-                emit Cancelled(funds[_id].owner, funds[_id]);
+                emit Cancelled(funds[_id].owner, funds[_id].id);
             } else {
                 revert("Problem with calculation");
             }
