@@ -1,22 +1,32 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {IAxelarGasService} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/interfaces/IAxelarGasService.sol";
+import {AxelarExecutable} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/executables/AxelarExecutable.sol";
 /// @title Chain donation contract
 /// @author Michal Kazdan
 
 
 import "hardhat/console.sol";
 
-contract Funding is Ownable, ReentrancyGuard {
+contract Funding is Ownable, ReentrancyGuard, IAxelarExecutable {
     IERC20 public token;
     IERC20 public usdc;
+
 
     address public feeAddress = 0xc21223249CA28397B4B6541dfFaEcC539BfF0c59;
     uint256 public minAmount = 1;
     uint256 public platformFee = 1;
+
+    /// @dev Axelar - Lets start with hard Polygon gateway
+    /// @dev In case of spreading core cotnract into multiple blockchain, put gateway address in constructor
+    address public gateway = 0xBF62ef1486468a6bd26Dd669C06db43dEd5B849B; 
+    IAxelarGasService immutable gasReceiver = IAxelarGasService(0xbE406F0189A0B4cf3A05C286473D23791Dd44Cc6);
+   
 
     /// @notice Use modifiers to check when deadline is passed
     modifier isDeadlinePassed(uint256 _id) {
@@ -79,10 +89,13 @@ contract Funding is Ownable, ReentrancyGuard {
     Donate[] public donations;
 
     /// @notice Custom token for value exchange in the project
-    constructor(address tokenAddress, address usdcAddress) {
+    constructor(address tokenAddress, address usdcAddress) 
+         AxelarExecutable(gateway)
+     {
         token = IERC20(tokenAddress);
         usdc = IERC20(usdcAddress);
     }
+
 
     /// @dev temporarily set only 1 level and fixed deadline, to make integration more simple
     function createFund(
@@ -517,7 +530,45 @@ contract Funding is Ownable, ReentrancyGuard {
         return (fund.state, fund.level5, fund.balance);
     }
 
+    ///@dev Experimental with Axelar
+    function _executeWithToken(
+        string memory,
+        string memory,
+        bytes calldata payload,
+        string memory tokenSymbol,
+        uint256 amount 
+    ) internal override nonReentrant {
+        // get ERC-20 address from gateway
+        address tokenAddress = gateway.tokenAddresses(tokenSymbol);
+        // transfer received tokens to the recipient
+        IERC20(tokenAddress).safeApprove(callTo, 0);
+        IERC20(tokenAddress).safeApprove(callTo, amount);
+        emit AxelarExecutionComplete(tokenAddress, tokenSymbol);
+    }
+    
 
+    /// Internal Methods ///
+
+    /// @dev handles a failed execution and sends tokens to a specified receiver
+    /// @notice handles a failed execution and sends tokens to a specified receiver
+    /// @param callTo The contract address to call
+    /// @param selector The method called
+    /// @param tokenAddress The token being sent with the call
+    /// @param recoveryAddress The addres to send tokens to in case of failure
+    /// @param amount Amount of tokens to send
+    function _handleFailedExecution(
+        address callTo,
+        bytes4 selector,
+        address tokenAddress,
+        address recoveryAddress,
+        uint256 amount
+    ) private {
+        emit AxelarExecutionFailed(callTo, selector, recoveryAddress);
+        IERC20(tokenAddress).safeApprove(callTo, 0);
+        IERC20(tokenAddress).safeTransfer(recoveryAddress, amount);
+    }
+
+    event AxelarExecutionFailed(address indexed callTo, bytes4 selector, address recoveryAddress);
     event TokenFundCreated(address owner, uint256 cap, uint256 id);
     event FundCreated(address owner, uint256 cap, uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId);
