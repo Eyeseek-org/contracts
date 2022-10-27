@@ -221,9 +221,10 @@ contract Funding is Ownable, ReentrancyGuard {
         // Call function "distributeRewards" pro každý font
     }
 
+
     /// @notice Only admin can distribute rewards
     /// @notice All microfunds, and fund are closed
-    function distribute(uint256 _id) public onlyOwner nonReentrant {
+    function distribute(uint256 _id) public nonReentrant {
         require(funds[_id].state == 1, "Fund is not active");
         if (funds[_id].currency == 0) {
             require(
@@ -244,8 +245,7 @@ contract Funding is Ownable, ReentrancyGuard {
             for (uint256 i = 0; i < microFunds.length; i++) {
                 if (microFunds[i].fundId == _id && microFunds[i].state == 1) {
                     if (microFunds[i].cap > microFunds[i].microBalance) {
-                        uint256 difference = microFunds[i].cap -
-                            microFunds[i].microBalance;
+                        uint256 difference = microFunds[i].cap - microFunds[i].microBalance;
                         token.approve(address(this), difference);
                         token.transferFrom(
                             address(this),
@@ -258,6 +258,7 @@ contract Funding is Ownable, ReentrancyGuard {
                             funds[_id].owner
                         );
                     }
+                    funds[_id].balance = 0;
                     microFunds[i].state = 2;
                 }
             }
@@ -293,6 +294,7 @@ contract Funding is Ownable, ReentrancyGuard {
                             funds[_id].owner
                         );
                     }
+                    funds[_id].balance = 0;
                     microFunds[i].state = 2;
                 }
             }
@@ -309,28 +311,31 @@ contract Funding is Ownable, ReentrancyGuard {
             "Not enough tokens in the contract"
         );
         if (
-            msg.sender == microFunds[_id].owner || msg.sender == address(this)
+            msg.sender == funds[_id].owner || msg.sender == address(this)
         ) {
             for (uint256 i = 0; i < microFunds.length; i++) {
                 if (microFunds[i].fundId == _id && microFunds[i].state == 1) {
                     /// @notice Close microfund
                     /// @notice Optional piece of code - Send back the remaining amount to the microfund owner
                     if (microFunds[i].cap > microFunds[i].microBalance) {
-                        token.approve(address(this), microFunds[_id].cap);
+                        token.approve(address(this), microFunds[i].cap);
                         token.transferFrom(
                             address(this),
-                            microFunds[_id].owner,
-                            microFunds[_id].cap
+                            microFunds[i].owner,
+                            microFunds[i].cap
                         );
+                        
                         emit Returned(
                             microFunds[i].owner,
-                            microFunds[_id].cap,
-                            funds[_id].owner
+                            microFunds[i].cap,
+                            funds[i].owner
                         );
                     }
+                    funds[_id].balance -= microFunds[i].cap;
                     microFunds[i].state = 2;
                 }
             }
+        
             ///@dev Fund states - 0=Donated, 1=Distributed, 2=Refunded
             for (uint256 i = 0; i < donations.length; i++) {
                 if (donations[i].fundId == _id && donations[i].state == 0) {
@@ -339,13 +344,14 @@ contract Funding is Ownable, ReentrancyGuard {
                         token.approve(address(this), donations[i].amount);
                         token.transferFrom(
                             address(this),
-                            donations[_id].backer,
-                            donations[_id].amount
+                            donations[i].backer,
+                            donations[i].amount
                         );
+                        funds[_id].balance -= donations[i].amount;
                         donations[i].state = 2;
                         emit Refunded(
-                            donations[_id].backer,
-                            donations[_id].amount,
+                            donations[i].backer,
+                            donations[i].amount,
                             _id
                         );
                     } else if (funds[_id].currency == 1) {
@@ -353,19 +359,20 @@ contract Funding is Ownable, ReentrancyGuard {
                         usdc.approve(address(this), donations[i].amount);
                         usdc.transferFrom(
                             address(this),
-                            donations[_id].backer,
-                            donations[_id].amount
+                            donations[i].backer,
+                            donations[i].amount
                         );
+                        funds[_id].balance -= donations[i].amount;
                         donations[i].state = 2;
                         emit Refunded(
-                            donations[_id].backer,
-                            donations[_id].amount,
+                            donations[i].backer,
+                            donations[i].amount,
                             _id
                         );
                     }
                 }
             }
-
+    
             /// @notice - Ideally project fund should be empty and can be closed
             if (funds[_id].balance == 0) {
                 funds[_id].state = 2;
@@ -374,7 +381,7 @@ contract Funding is Ownable, ReentrancyGuard {
                 revert("Problem with calculation");
             }
         }
-    }
+        }
 
     // ------ ADMIN FUNCTIONS ----------
     /// @notice Allow admin to change minimum amount for new projects
@@ -452,7 +459,7 @@ contract Funding is Ownable, ReentrancyGuard {
 
     /// @notice - Calculate number of involved microfunds for specific donation amount
     /// @param _index - ID of the fund
-    function calcTotalDonations(uint256 _index)
+    function getBackers(uint256 _index)
         public
         view
         returns (uint256)
@@ -469,7 +476,7 @@ contract Funding is Ownable, ReentrancyGuard {
     }
 
     /// @notice - Get project deadline
-    function getFuddDeadline(uint256 _index) public view returns (uint256) {
+    function getFundDeadline(uint256 _index) public view returns (uint256) {
         return funds[_index].deadline;
     }
 
