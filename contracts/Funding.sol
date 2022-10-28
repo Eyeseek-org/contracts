@@ -275,42 +275,6 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
                     microFunds[i].state = 2;
                 }
             }
-        } else if (funds[_id].currency == 1) {
-            require(
-                usdc.balanceOf(address(this)) >= funds[_id].balance,
-                "Not enough tokens in the contract"
-            );
-            /// @notice Take 1% fee to Eyeseek treasury
-            uint256 fee = (funds[_id].balance * 1) / 100;
-            uint256 fundGain = funds[_id].balance - fee;
-            usdc.transferFrom(address(this), feeAddress, fee);
-            emit FundingFee(funds[_id].owner, fee);
-            /// @notice Distribute rewards to fund owner
-            usdc.transferFrom(address(this), funds[_id].owner, fundGain);
-            funds[_id].state = 2;
-            emit Distributed(funds[_id].owner, funds[_id].balance);
-            /// @notice Close microfund - Send back the remaining amount to the microfund owner
-            for (uint256 i = 0; i < microFunds.length; i++) {
-                if (microFunds[i].fundId == _id && microFunds[i].state == 1) {
-                    if (microFunds[i].cap > microFunds[i].microBalance) {
-                        uint256 difference = microFunds[i].cap -
-                            microFunds[i].microBalance;
-                        usdc.approve(address(this), difference);
-                        usdc.transferFrom(
-                            address(this),
-                            microFunds[_id].owner,
-                            difference
-                        );
-                        emit Returned(
-                            microFunds[i].owner,
-                            difference,
-                            funds[_id].owner
-                        );
-                    }
-                    funds[_id].balance = 0;
-                    microFunds[i].state = 2;
-                }
-            }
         } else {
             revert("Invalid currency");
         }
@@ -368,20 +332,7 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
                             _id
                         );
                     } else if (funds[_id].currency == 1) {
-                    ///@notice refund the backers of USDC
-                        usdc.approve(address(this), donations[i].amount);
-                        usdc.transferFrom(
-                            address(this),
-                            donations[i].backer,
-                            donations[i].amount
-                        );
-                        funds[_id].balance -= donations[i].amount;
-                        donations[i].state = 2;
-                        emit Refunded(
-                            donations[i].backer,
-                            donations[i].amount,
-                            _id
-                        );
+                        revert("Invalid currency");
                     }
                 }
             }
@@ -517,19 +468,6 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         return (microFund.state, microFund.microBalance, microFund.cap);
     }
 
-    function getFundInfo(uint256 _index)
-        public
-        view
-        returns (
-            uint256 state,
-            uint256 max,
-            uint256 balance
-        )
-    {
-        Fund storage fund = funds[_index];
-        return (fund.state, fund.level5, fund.balance);
-    }
-
     ///@dev Experimental with Axelar
     function _executeWithToken(
         string memory,
@@ -574,26 +512,44 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
             })
         );
         emit TokenFundCreated(
-            msg.sender,š
+            msg.sender,
             _level1,
             tokenFunds.length,
             _tokenAddress
         );
     }
 
-    // ///@dev Distribute token reward to backers
-    // function distributeTokenReward(uint256 _id) public {
-    //     require(tokenFunds[_id].state == 1, "Fund is not active");
-    //     require(tokenFunds[_id].balance >= tokenFunds[_id].level1, "Goal not reached");
-    //   ///  require(tokenFunds[_id].deadline < block.timestamp, "Deadline not reached"); --- done later
-    //     rewardToken.approve(address(this), tokenFunds[_id].reward);
-    //     /// TBD - distribute reward to backers
-    //     rewardToken.transfer(tokenFunds[_id].owner, tokenFunds[_id].reward);
-    //     // Loop through backers - will need more functions
-    //     tokenFunds[_id].state = 2;
-    //     // tokenFunds[_id].balance -= 0;
-    //     emit TokenFundCompleted(tokenFunds[_id].owner, tokenFunds[_id].id);
-    // }
+    ///@dev Distribute token reward to backers
+    /// TBD ideally merge tokenFund with regular fund - to access it via Axelar cross-chain
+    function distributeTokenReward(uint256 _id) public {
+        require(tokenFunds[_id].state == 1, "Fund is not active");
+        require(tokenFunds[_id].balance >= tokenFunds[_id].level1, "Goal not reached");
+        ///require(tokenFunds[_id].deadline < block.timestamp, "Deadline not reached"); --- done later
+        rewardToken.approve(address(this), tokenFunds[_id].reward);
+        ///@dev Distribute locked tokens proportionally to the users
+            for (uint256 i = 0; i < donations.length; i++) {
+                if (donations[i].fundId == _id && donations[i].state == 0) {
+                    uint256 proportion = donations[i].amount / tokenFunds[_id].balance; // Underflow
+                    uint256 share = proportion * tokenFunds[_id].reward;
+                    ///@notice refund the backers of the EYE token
+                        token.transferFrom(
+                            address(this),
+                            donations[i].backer,
+                            donations[i].amount
+                        );
+                        funds[_id].balance -= donations[i].amount;
+                        donations[i].state = 2;
+                        emit Refunded(
+                            donations[i].backer,
+                            donations[i].amount,
+                            _id
+                        );
+                    } 
+            }
+        tokenFunds[_id].state = 2;
+        // tokenFunds[_id].balance -= 0;
+        emit TokenFundCompleted(tokenFunds[_id].owner, tokenFunds[_id].id);
+    }
     
 
     event AxelarExecutionComplete(uint256 amount, string symbol);
