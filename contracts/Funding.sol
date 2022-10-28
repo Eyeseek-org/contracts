@@ -72,17 +72,17 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         uint256 state; ///@dev 0=Donated, 1=Distributed, 2=Refunded
     }
 
-    /// @dev Struct for token funds
+    IERC20 rewardToken;
     struct TokenFund {
         uint256 id;
         address owner;
-        uint256 balance;
+        uint256 balance; // Current fund balance
         uint256 deadline; // Timespan for crowdfunding to be active
         uint256 state; ///@dev 0=Cancelled, 1=Active, 2=Finished
-        address tokenAddress;
-        uint256 reward;
-        uint256 level1;
+        uint256 reward; // Token reward locked for backers
+        uint256 level1; // Crowdfunding goal to achieve
     }
+
     
     TokenFund[] public tokenFunds;
     Fund[] public funds;
@@ -544,11 +544,61 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         IERC20(tokenAddress).transfer(recipient, amount);
         emit AxelarExecutionComplete(amount, tokenSymbol);
     }
+
+    ///@dev Experimental with Token funding contract
+
+        function createTokenFund (
+        uint256 _level1,
+        uint256 _amount,
+        address _tokenAddress
+    ) public {
+        uint256 _deadline = block.timestamp + 30 days; 
+
+        require(_level1 > 1000, "Goal must be greater than 1000");
+        require(_amount > 100, "Token reward must be greater than 100");
+        require(_tokenAddress != address(0), "Invalid token address");
+        require(_deadline > block.timestamp, "Invalid deadline");
+        rewardToken = IERC20(_tokenAddress);
+        uint256 bal = token.balanceOf(msg.sender);
+        require(_amount <= bal, "Not enough token in wallet");
+        token.transferFrom(msg.sender, address(this), _amount);
+        tokenFunds.push(
+            TokenFund({
+                owner: msg.sender,
+                balance: 0,
+                id: tokenFunds.length,
+                state: 1,
+                deadline: _deadline,
+                level1: _level1,
+                reward: _amount
+            })
+        );
+        emit TokenFundCreated(
+            msg.sender,š
+            _level1,
+            tokenFunds.length,
+            _tokenAddress
+        );
+    }
+
+    // ///@dev Distribute token reward to backers
+    // function distributeTokenReward(uint256 _id) public {
+    //     require(tokenFunds[_id].state == 1, "Fund is not active");
+    //     require(tokenFunds[_id].balance >= tokenFunds[_id].level1, "Goal not reached");
+    //   ///  require(tokenFunds[_id].deadline < block.timestamp, "Deadline not reached"); --- done later
+    //     rewardToken.approve(address(this), tokenFunds[_id].reward);
+    //     /// TBD - distribute reward to backers
+    //     rewardToken.transfer(tokenFunds[_id].owner, tokenFunds[_id].reward);
+    //     // Loop through backers - will need more functions
+    //     tokenFunds[_id].state = 2;
+    //     // tokenFunds[_id].balance -= 0;
+    //     emit TokenFundCompleted(tokenFunds[_id].owner, tokenFunds[_id].id);
+    // }
     
 
-
     event AxelarExecutionComplete(uint256 amount, string symbol);
-    event TokenFundCreated(address owner, uint256 cap, uint256 id);
+    event TokenFundCreated(address owner, uint256 cap, uint256 id, address token);
+    event TokenFundCompleted(address owner, uint256 id);
     event FundCreated(address owner, uint256 cap, uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId);
     event Donated(address donator, uint256 amount, uint256 fundId);
