@@ -16,7 +16,7 @@ beforeEach(async function () {
     donationToken = await Token.deploy()
 
     const Donation = await ethers.getContractFactory("Funding")
-    donation = await Donation.deploy(donationToken.address, "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59")
+    donation = await Donation.deploy("0xBF62ef1486468a6bd26Dd669C06db43dEd5B849B", donationToken.address, "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59")
     stakeAmount = ethers.utils.parseUnits("1000000", 1)
     donationToken.transfer(user.address, stakeAmount)
     donationToken.transfer(cancelUser.address, 50000)
