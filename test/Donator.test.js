@@ -121,7 +121,23 @@ describe("Chain donation testing", async function () {
         const contractBalance = await donationToken.balanceOf(donation.address)
         expect(contractBalance).to.equal(0)
     })
-
+    it("Create token fund", async function(){
+        const [user, fund] = await ethers.getSigners() 
+        const rewAmount = 2000
+        const balBefore = await donationToken.balanceOf(user.address)
+        donationToken.transfer(user.address, 100000000)
+        await donationToken.approve(donation.address, rewAmount, {from: user.address})
+        await donation.connect(user).createTokenFund(2000,rewAmount,donationToken.address)
+        const userAfter = await donationToken.balanceOf(user.address)
+        console.log(userAfter)
+        // Directly donate
+        await donation.contributeToken(2000,0)
+        console.log('Contributed')
+        // Distribute the reward
+        await donation.distributeTokenReward(0)
+        const balEnd = await donationToken.balanceOf(user.address)
+        expect(balBefore).to.equal(balEnd)
+    })
 })
 
 

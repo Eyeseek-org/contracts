@@ -11,8 +11,6 @@ import {AxelarExecutable} from "@axelar-network/axelar-gmp-sdk-solidity/contract
 /// @author Michal Kazdan
 
 
-import "hardhat/console.sol";
-
 contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
     IERC20 public token;
     IERC20 public usdc;
@@ -439,6 +437,11 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         return backerNumber;
     }
 
+    /// @notice Indicates penalty-free withdrawal period
+    function isPeriodFinished(uint256 _index) public view returns (bool) {
+        return block.timestamp > funds[_index].deadline;
+    }
+
     /// @notice - Get project deadline
     function getFundDeadline(uint256 _index) public view returns (uint256) {
         return funds[_index].deadline;
@@ -491,7 +494,6 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         address _tokenAddress
     ) public {
         uint256 _deadline = block.timestamp + 30 days; 
-
         require(_level1 > 1000, "Goal must be greater than 1000");
         require(_amount > 100, "Token reward must be greater than 100");
         require(_tokenAddress != address(0), "Invalid token address");
@@ -519,6 +521,32 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         );
     }
 
+    function contributeToken(
+        uint256 _amountD,
+        uint256 _id
+    ) public  {
+        /// @param _amountD - amount of tokens to be direcly donated
+        require(msg.sender != address(0), "Invalid address");
+        require(_amountD >= 0, "Invalid amount");
+        require(tokenFunds[_id].state == 1, "Fund is not active");
+        /// @notice If donated, fund adds balance and related microfunds are involed
+        ///@dev 0=Donated, 1=Distributed, 2=Refunded
+        if (_amountD > 0) {
+            tokenFunds[_id].balance += _amountD;
+            // Updated the direct donations
+            donations.push(
+                Donate({
+                    id: donations.length,
+                    fundId: _id,
+                    backer: msg.sender,
+                    amount: _amountD,
+                    state: 0
+                })
+            );
+            emit Donated(msg.sender, _amountD, _id);
+        }
+    }
+
     ///@dev Distribute token reward to backers
     /// TBD ideally merge tokenFund with regular fund - to access it via Axelar cross-chain
     function distributeTokenReward(uint256 _id) public {
@@ -529,15 +557,15 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         ///@dev Distribute locked tokens proportionally to the users
             for (uint256 i = 0; i < donations.length; i++) {
                 if (donations[i].fundId == _id && donations[i].state == 0) {
-                    uint256 proportion = donations[i].amount / tokenFunds[_id].balance; // Underflow
-                    uint256 share = proportion * tokenFunds[_id].reward;
+                    uint256 proportion = (donations[i].amount * 100) / tokenFunds[_id].balance; // Underflow
+                    uint256 share = (proportion * tokenFunds[_id].reward) / 100;
                     ///@notice refund the backers of the EYE token
                         token.transferFrom(
                             address(this),
                             donations[i].backer,
                             donations[i].amount
                         );
-                        funds[_id].balance -= donations[i].amount;
+                        tokenFunds[_id].balance -= donations[i].amount;
                         donations[i].state = 2;
                         emit Refunded(
                             donations[i].backer,
