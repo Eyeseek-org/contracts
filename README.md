@@ -17,4 +17,3 @@ Mumbai testnet core contract: 0xEEc8d86688112806080E1e2d69E4294EbF6c2f88
 
 ## Crosschain contracts - Axelar experiment
 Fantom source contract: 0x1fB4F306500CcCFbD92156c0790FE1d312a362E1
-Polygon dest contract: 0x77E3291ff2C02857C9848c96bD27CD0f19bad2af

@@ -15,8 +15,23 @@ beforeEach(async function () {
     const Token = await ethers.getContractFactory("Token")
     donationToken = await Token.deploy()
 
+    const Usdc = await ethers.getContractFactory("Token")
+    usdcToken = await Usdc.deploy()
+    usdcToken.transfer(user.address, 5000000000)
+    usdcToken.transfer(fund.address, 5000000000)
+
+    const Usdt = await ethers.getContractFactory("Token")
+    usdtToken = await Usdt.deploy()
+    usdtToken.transfer(user.address, 5000000000)
+    usdtToken.transfer(fund.address, 5000000000)
+
+    const Dai = await ethers.getContractFactory("Token")
+    daiToken = await Dai.deploy()
+    daiToken.transfer(user.address, 5000000000)
+    daiToken.transfer(user.address, 5000000000)
+
     const Donation = await ethers.getContractFactory("Funding")
-    donation = await Donation.deploy("0xBF62ef1486468a6bd26Dd669C06db43dEd5B849B", donationToken.address, "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59")
+    donation = await Donation.deploy("0xBF62ef1486468a6bd26Dd669C06db43dEd5B849B", donationToken.address, usdtToken.address, daiToken.address)
     stakeAmount = ethers.utils.parseUnits("1000000", 1)
     donationToken.transfer(user.address, stakeAmount)
     donationToken.transfer(cancelUser.address, 50000)
@@ -48,16 +63,16 @@ describe("Chain donation testing", async function () {
     //     const allowance = microfund1 + microfund2 + microfund3 + microfund4 + microfund5 + initial1 + initial2 + initial3
     //     console.log(allowance)
 
-    //     await donation.connect(fund).createFund(mainfund)
-    //     await donation.connect(fund).createFund(secondFund)
+    //     await donation.connect(fund).createFund(mainfund, '0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E', 0)
+    //     await donation.connect(fund).createFund(secondFund, '0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E', 0)
     //     await donationToken.approve(donation.address, allowance, {from: user.address})
     //      // 3 Inverstors created microfund with initial donation of 20, 1 investor with 0
-    //     await donation.contribute(microfund1,initial1,0, {from: user.address})
-    //     await donation.contribute(microfund2,initial2,0, {from: user.address})
-    //     await donation.contribute(microfund3,initial3,0, {from: user.address})
+    //     await donation.contribute(microfund1,initial1,0,1, {from: user.address})
+    //     await donation.contribute(microfund2,initial2,0,1, {from: user.address})
+    //     await donation.contribute(microfund3,initial3,0,1, {from: user.address})
     //     await donation.contribute(microfund4,0,0, {from: user.address})
     //     // This microfund won't be calcuated due to lack of fund
-    //     await donation.contribute(microfund5,0,0, {from: user.address})
+    //     await donation.contribute(microfund5,0,0,1, {from: user.address})
     //     // Calculate donation impact
     //     const prediction = await donation.calcOutcome(0,100)
     //     expect(prediction).to.equal(500)
@@ -70,7 +85,7 @@ describe("Chain donation testing", async function () {
 
     //     // Check multiplier, 4x multiplier from microfunds + donation
     //     await donationToken.approve(donation.address, 100, {from: user.address})
-    //     await donation.contribute(0,100, 0, {from: user.address})
+    //     await donation.contribute(0,100, 0,1, {from: user.address})
     //     const info2 = await donation.getFundInfo(0)
     //     expect(info2.balance).to.equal(620)
     //     console.log("Total fund balance is", info2.balance)
@@ -92,11 +107,11 @@ describe("Chain donation testing", async function () {
     // })
     it("Cancel fund - Distributes resources back", async function () {
         const [user, fund] = await ethers.getSigners()
-        const fundAmount = 500000000
-        await donation.connect(fund).createFund(fundAmount)
+        const fundAmount = 500000000 
+        await donation.connect(fund).createFund(fundAmount, '0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E', 0)
         const balanceBefore = await donationToken.balanceOf(user.address)
         await donationToken.approve(donation.address, fundAmount, {from: user.address})
-        await donation.contribute(0,fundAmount,0, {from: user.address})
+        await donation.contribute(0,fundAmount,0,1, {from: user.address})
         await donation.connect(fund).cancelFund(0);
         const balanceAfter = await donationToken.balanceOf(user.address)
         expect(balanceBefore).to.equal(balanceAfter)
@@ -105,38 +120,21 @@ describe("Chain donation testing", async function () {
 
     })
     it("Fund distribution", async function () {
-        const [user, fund] = await ethers.getSigners()
-        const fundAmount = 500000000
-        await donation.connect(fund).createFund(fundAmount)
-        const fundBalBefore = await donationToken.balanceOf(fund.address)
-        console.log(fundBalBefore)
-        const balanceBefore = await donationToken.balanceOf(user.address)
-        await donationToken.approve(donation.address, fundAmount, {from: user.address})
-        await donation.contribute(0,fundAmount,0, {from: user.address})
-        await donation.connect(fund).distribute(0);
-        const balanceAfter = await donationToken.balanceOf(user.address)
-        expect(balanceBefore).not.to.equal(balanceAfter)
-        const fundAfter = await donationToken.balanceOf(fund.address)
-        expect(fundBalBefore).not.to.equal(fundAfter)
-        const contractBalance = await donationToken.balanceOf(donation.address)
-        expect(contractBalance).to.equal(0)
-    })
-    it("Create token fund", async function(){
-        const [user, fund] = await ethers.getSigners() 
-        const rewAmount = 2000
-        const balBefore = await donationToken.balanceOf(user.address)
-        donationToken.transfer(user.address, 100000000)
-        await donationToken.approve(donation.address, rewAmount, {from: user.address})
-        await donation.connect(user).createTokenFund(2000,rewAmount,donationToken.address)
-        const userAfter = await donationToken.balanceOf(user.address)
-        console.log(userAfter)
-        // Directly donate
-        await donation.contributeToken(2000,0)
-        console.log('Contributed')
-        // Distribute the reward
-        await donation.distributeTokenReward(0)
-        const balEnd = await donationToken.balanceOf(user.address)
-        expect(balBefore).to.equal(balEnd)
+        // const [user, fund] = await ethers.getSigners()
+        // const fundAmount = 500000000
+        // await donation.connect(fund).createFund(fundAmount, '0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E', 0)
+        // const fundBalBefore = await donationToken.balanceOf(fund.address)
+        // console.log(fundBalBefore)
+        // const balanceBefore = await donationToken.balanceOf(user.address)
+        // await donationToken.approve(donation.address, fundAmount, {from: user.address})
+        // await donation.contribute(0,fundAmount,0,1, {from: user.address})
+        // await donation.connect(fund).distribute(0);
+        // const balanceAfter = await donationToken.balanceOf(user.address)
+        // expect(balanceBefore).not.to.equal(balanceAfter)
+        // const fundAfter = await donationToken.balanceOf(fund.address)
+        // expect(fundBalBefore).not.to.equal(fundAfter)
+        // const contractBalance = await donationToken.balanceOf(donation.address)
+        // expect(contractBalance).to.equal(0)
     })
 })
 
