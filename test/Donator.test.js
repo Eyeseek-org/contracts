@@ -31,7 +31,7 @@ beforeEach(async function () {
     daiToken.transfer(user.address, 5000000000)
 
     const Donation = await ethers.getContractFactory("Funding")
-    donation = await Donation.deploy("0xBF62ef1486468a6bd26Dd669C06db43dEd5B849B", donationToken.address, usdtToken.address, daiToken.address)
+    donation = await Donation.deploy( donationToken.address, usdtToken.address, daiToken.address)
     stakeAmount = ethers.utils.parseUnits("1000000", 1)
     donationToken.transfer(user.address, stakeAmount)
     donationToken.transfer(cancelUser.address, 50000)

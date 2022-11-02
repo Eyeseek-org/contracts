@@ -5,15 +5,13 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {IAxelarGasService} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/interfaces/IAxelarGasService.sol";
-import {AxelarExecutable} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/executables/AxelarExecutable.sol";
 
 /// @title Chain donation contract
 /// @author Michal Kazdan
 
 /// import "hardhat/console.sol";
 
-contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
+contract Funding is Ownable, ReentrancyGuard {
     IERC20 public usdc;
     IERC20 public usdt;
     IERC20 public dai;
@@ -26,11 +24,6 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
     address public feeAddress = 0xc21223249CA28397B4B6541dfFaEcC539BfF0c59;
     uint256 public minAmount = 1;
     uint256 public platformFee = 1;
-
-    /// @dev Axelar - Lets start with hard Polygon gateway
-    /// @dev In case of spreading core cotnract into multiple blockchain, put gateway address in constructor
-    //address public gateway = 0xBF62ef1486468a6bd26Dd669C06db43dEd5B849B; 
-    IAxelarGasService immutable gasReceiver = IAxelarGasService(0xbE406F0189A0B4cf3A05C286473D23791Dd44Cc6);
    
 
     /// @notice Use modifiers to check when deadline is passed
@@ -85,8 +78,7 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
     MicroFund[] public microFunds;
     Donate[] public donations;
 
-    constructor(address _gateway, address usdcAddress, address usdtAddress, address daiAddress) 
-         AxelarExecutable(_gateway)
+    constructor(address usdcAddress, address usdtAddress, address daiAddress) 
      {
         usdc = IERC20(usdcAddress);
         usdt = IERC20(usdtAddress);
@@ -115,7 +107,7 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
             require(_rewardAmount <= bal, "Not enough token in wallet");
             rewardToken.transferFrom(msg.sender, address(this), _rewardAmount);
         }
-        /// @dev Only one active fund per address should be allowed (for now disabled)
+        // / @dev Only one active fund per address should be allowed (for now disabled)
         // for (uint256 i = 0; i < funds.length; i++) {
         //    require(funds[i].owner == msg.sender && funds[i].state == 0, "You already have a project");
         // }
@@ -241,33 +233,33 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         }
     }
 
-    function batchDistribute() public onlyOwner nonReentrant {
-        for (uint256 i = 0; i < funds.length; i++) {
-            /// @notice - Only active funds with achieved minimum are eligible for distribution
-            /// @notice - Function for automation, checks deadline and handles distribution/cancellation
-            if (block.timestamp < funds[i].deadline) {
-                continue;
-            }
-            /// @notice - Fund accomplished minimum goal
-            if (
-                funds[i].state == 1 &&
-                funds[i].balance >= funds[i].level1 &&
-                block.timestamp > funds[i].deadline
-            ) {
-                distribute(i);
-            } 
-            /// @notice - If not accomplished, funds are returned back to the users on home chain
-            else if (
-                funds[i].state == 1 &&
-                funds[i].balance < funds[i].level1 &&
-                block.timestamp > funds[i].deadline
-            ) {
-                cancelFund(i);
-            }
-        }
-        // For each active fund check if cap is reached and if so
-        // Call function "distributeRewards" pro každý font
-    }
+    // function batchDistribute() public onlyOwner nonReentrant {
+    //     for (uint256 i = 0; i < funds.length; i++) {
+    //         /// @notice - Only active funds with achieved minimum are eligible for distribution
+    //         /// @notice - Function for automation, checks deadline and handles distribution/cancellation
+    //         if (block.timestamp < funds[i].deadline) {
+    //             continue;
+    //         }
+    //         /// @notice - Fund accomplished minimum goal
+    //         if (
+    //             funds[i].state == 1 &&
+    //             funds[i].balance >= funds[i].level1 &&
+    //             block.timestamp > funds[i].deadline
+    //         ) {
+    //             distribute(i);
+    //         } 
+    //         /// @notice - If not accomplished, funds are returned back to the users on home chain
+    //         else if (
+    //             funds[i].state == 1 &&
+    //             funds[i].balance < funds[i].level1 &&
+    //             block.timestamp > funds[i].deadline
+    //         ) {
+    //             cancelFund(i);
+    //         }
+    //     }
+    //     // For each active fund check if cap is reached and if so
+    //     // Call function "distributeRewards" pro každý font
+    // }
     /// @notice Only admin can distribute rewards
     /// @notice All microfunds, and fund are closed
     /// @notice Check all supported currencies and distribute them to the project owner
@@ -307,70 +299,70 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
                 }
             }
         } 
-        // else if (funds[_id].usdtBalance > 0){
-        //     usdt.approve(address(this), funds[_id].usdtBalance);
-        //      /// @notice Take 1% fee to Eyeseek treasury
-        //     uint256 usdtFee = (funds[_id].usdtBalance * 1) / 100;
-        //     uint256 usdtGain = funds[_id].usdtBalance - usdtFee;
-        //     usdt.transferFrom(address(this), feeAddress, usdtFee);
-        //     emit UsdtFee(funds[_id].owner, usdtFee);
-        //     usdt.transferFrom(address(this), funds[_id].owner, usdtGain);
-        //     emit UsdtDistributed(funds[_id].owner, funds[_id].usdtBalance);
-        //     funds[_id].balance -= funds[_id].usdtBalance;
-        //     /// @notice Resources are returned back to the microfunds
-        //     for (uint256 i = 0; i < microFunds.length; i++) {
-        //         if (microFunds[i].fundId == _id && microFunds[i].state == 1 && microFunds[i].currency == 2) {
-        //             if (microFunds[i].cap > microFunds[i].microBalance) {
-        //                 uint256 usdtDifference = microFunds[i].cap - microFunds[i].microBalance;
-        //                 usdt.approve(address(this), usdtDifference);
-        //                 usdt.transferFrom(
-        //                     address(this),
-        //                     microFunds[_id].owner,
-        //                     usdtDifference
-        //                 );
-        //                 emit Returned(
-        //                     microFunds[i].owner,
-        //                     usdtDifference,
-        //                     funds[_id].owner
-        //                 );
-        //             }
-        //             microFunds[_id].microBalance = 0; ///@dev resets the microfund
-        //             microFunds[i].state = 2; ///@dev closing the microfunds
-        //         }
-        //     }
-        // } 
-        // else if (funds[_id].daiBalance > 0){
-        //     dai.approve(address(this), funds[_id].daiBalance);
-        //      /// @notice Take 1% fee to Eyeseek treasury
-        //     uint256 daiFee = (funds[_id].daiBalance * 1) / 100;
-        //     uint256 daiGain = funds[_id].daiBalance - daiFee;
-        //     dai.transferFrom(address(this), feeAddress, daiFee);
-        //     emit DaiFee(funds[_id].owner, daiFee);
-        //     dai.transferFrom(address(this), funds[_id].owner, daiGain);
-        //     emit UsdtDistributed(funds[_id].owner, funds[_id].daiBalance);
-        //     funds[_id].balance -= funds[_id].daiBalance;
-        //     /// @notice Resources are returned back to the microfunds
-        //     for (uint256 i = 0; i < microFunds.length; i++) {
-        //         if (microFunds[i].fundId == _id && microFunds[i].state == 1 && microFunds[i].currency == 3) {
-        //             if (microFunds[i].cap > microFunds[i].microBalance) {
-        //                 uint256 daiDifference = microFunds[i].cap - microFunds[i].microBalance;
-        //                 dai.approve(address(this), daiDifference);
-        //                 dai.transferFrom(
-        //                     address(this),
-        //                     microFunds[_id].owner,
-        //                     daiDifference
-        //                 );
-        //                 emit Returned(
-        //                     microFunds[i].owner,
-        //                     daiDifference,
-        //                     funds[_id].owner
-        //                 );
-        //             }
-        //             microFunds[_id].microBalance = 0; ///@dev resets the microfund
-        //             microFunds[i].state = 2; ///@dev closing the microfunds
-        //         }
-        //     }
-        // } 
+        else if (funds[_id].usdtBalance > 0){
+            usdt.approve(address(this), funds[_id].usdtBalance);
+             /// @notice Take 1% fee to Eyeseek treasury
+            uint256 usdtFee = (funds[_id].usdtBalance * 1) / 100;
+            uint256 usdtGain = funds[_id].usdtBalance - usdtFee;
+            usdt.transferFrom(address(this), feeAddress, usdtFee);
+            emit UsdtFee(funds[_id].owner, usdtFee);
+            usdt.transferFrom(address(this), funds[_id].owner, usdtGain);
+            emit UsdtDistributed(funds[_id].owner, funds[_id].usdtBalance);
+            funds[_id].balance -= funds[_id].usdtBalance;
+            /// @notice Resources are returned back to the microfunds
+            for (uint256 i = 0; i < microFunds.length; i++) {
+                if (microFunds[i].fundId == _id && microFunds[i].state == 1 && microFunds[i].currency == 2) {
+                    if (microFunds[i].cap > microFunds[i].microBalance) {
+                        uint256 usdtDifference = microFunds[i].cap - microFunds[i].microBalance;
+                        usdt.approve(address(this), usdtDifference);
+                        usdt.transferFrom(
+                            address(this),
+                            microFunds[_id].owner,
+                            usdtDifference
+                        );
+                        emit Returned(
+                            microFunds[i].owner,
+                            usdtDifference,
+                            funds[_id].owner
+                        );
+                    }
+                    microFunds[_id].microBalance = 0; ///@dev resets the microfund
+                    microFunds[i].state = 2; ///@dev closing the microfunds
+                }
+            }
+        } 
+        else if (funds[_id].daiBalance > 0){
+            dai.approve(address(this), funds[_id].daiBalance);
+             /// @notice Take 1% fee to Eyeseek treasury
+            uint256 daiFee = (funds[_id].daiBalance * 1) / 100;
+            uint256 daiGain = funds[_id].daiBalance - daiFee;
+            dai.transferFrom(address(this), feeAddress, daiFee);
+            emit DaiFee(funds[_id].owner, daiFee);
+            dai.transferFrom(address(this), funds[_id].owner, daiGain);
+            emit UsdtDistributed(funds[_id].owner, funds[_id].daiBalance);
+            funds[_id].balance -= funds[_id].daiBalance;
+            /// @notice Resources are returned back to the microfunds
+            for (uint256 i = 0; i < microFunds.length; i++) {
+                if (microFunds[i].fundId == _id && microFunds[i].state == 1 && microFunds[i].currency == 3) {
+                    if (microFunds[i].cap > microFunds[i].microBalance) {
+                        uint256 daiDifference = microFunds[i].cap - microFunds[i].microBalance;
+                        dai.approve(address(this), daiDifference);
+                        dai.transferFrom(
+                            address(this),
+                            microFunds[_id].owner,
+                            daiDifference
+                        );
+                        emit Returned(
+                            microFunds[i].owner,
+                            daiDifference,
+                            funds[_id].owner
+                        );
+                    }
+                    microFunds[_id].microBalance = 0; ///@dev resets the microfund
+                    microFunds[i].state = 2; ///@dev closing the microfunds
+                }
+            }
+        } 
             if (funds[_id].balance > 0){
                 funds[_id].balance = 0;
                 emit IncorrectDistribution(true);
@@ -542,8 +534,12 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
     }
 
     /// @notice - Get project deadline
-    function getFundDeadline(uint256 _index) public view returns (uint256) {
-        return funds[_index].deadline;
+    function getFundDeadline (uint256 _index) public view returns (uint256) {
+        if (funds[_index].deadline > block.timestamp) {
+            return funds[_index].deadline - block.timestamp;
+        } else {
+            return 0;
+        }
     }
 
     /// @notice - Get project minimal cap
@@ -554,6 +550,11 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
     /// @notice - Get project actual backing
     function getFundBalance(uint256 _index) public view returns (uint256) {
         return funds[_index].balance;
+    }
+
+    /// @notice - Get balances across all currencies
+    function getAllBalances(uint256 _index) public view returns (uint256, uint256, uint256, uint256) {
+        return (funds[_index].balance, funds[_index].usdcBalance, funds[_index].usdtBalance, funds[_index].daiBalance);
     }
 
     /// @notice - Get detail about a microfund
@@ -571,24 +572,6 @@ contract Funding is Ownable, ReentrancyGuard, AxelarExecutable {
         return (microFund.state, microFund.microBalance, microFund.cap, microFund.currency);
     }
 
-    ///@dev Experimental with Axelar
-    function _executeWithToken(
-        string memory,
-        string memory,
-        bytes calldata payload,
-        string memory tokenSymbol,
-        uint256 amount 
-    ) internal override nonReentrant {
-        // get ERC-20 address from gateway
-        address recipient = abi.decode(payload, (address));
-        address tokenAddress = gateway.tokenAddresses(tokenSymbol);
-        IERC20(tokenAddress).transfer(recipient, amount);
-        emit AxelarExecutionComplete(amount, tokenSymbol);
-    }
-
-    
-
-    event AxelarExecutionComplete(uint256 amount, string symbol);
     event FundCreated(address owner, uint256 cap, uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId, uint256 currency);
     event Donated(address donator, uint256 amount, uint256 fundId, uint256 currency);
