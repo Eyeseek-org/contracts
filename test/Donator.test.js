@@ -17,7 +17,7 @@ beforeEach(async function () {
 
     const Usdc = await ethers.getContractFactory("Token")
     usdcToken = await Usdc.deploy()
-    usdcToken.transfer(user.address, 5000000000)
+    usdcToken.transfer(user.address, 3 * 5000000000)
     usdcToken.transfer(fund.address, 5000000000)
 
     const Usdt = await ethers.getContractFactory("Token")
@@ -108,10 +108,21 @@ describe("Chain donation testing", async function () {
     it("Cancel fund - Distributes resources back", async function () {
         const [user, fund] = await ethers.getSigners()
         const fundAmount = 500000000 
+        const tokenAmount = 150
+        await donationToken.approve(donation.address, tokenAmount, {from: user.address})
         await donation.connect(fund).createFund(fundAmount, '0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E', 0)
         const balanceBefore = await donationToken.balanceOf(user.address)
-        await donationToken.approve(donation.address, fundAmount, {from: user.address})
+        await donationToken.approve(donation.address, 1 * fundAmount, {from: user.address})
+        await usdtToken.approve(donation.address, 2 * fundAmount, {from: user.address})
         await donation.contribute(0,fundAmount,0,1, {from: user.address})
+        await donation.contribute(fundAmount,fundAmount,0,2, {from: user.address})
+
+        const balance = await donationToken.balanceOf(donation.address)
+        const balanceUsdt = await usdtToken.balanceOf(donation.address)
+
+        console.log(balance)
+        console.log(balanceUsdt)
+
         await donation.connect(fund).cancelFund(0);
         const balanceAfter = await donationToken.balanceOf(user.address)
         expect(balanceBefore).to.equal(balanceAfter)
@@ -120,21 +131,21 @@ describe("Chain donation testing", async function () {
 
     })
     it("Fund distribution", async function () {
-        // const [user, fund] = await ethers.getSigners()
-        // const fundAmount = 500000000
-        // await donation.connect(fund).createFund(fundAmount, '0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E', 0)
-        // const fundBalBefore = await donationToken.balanceOf(fund.address)
-        // console.log(fundBalBefore)
-        // const balanceBefore = await donationToken.balanceOf(user.address)
-        // await donationToken.approve(donation.address, fundAmount, {from: user.address})
-        // await donation.contribute(0,fundAmount,0,1, {from: user.address})
-        // await donation.connect(fund).distribute(0);
-        // const balanceAfter = await donationToken.balanceOf(user.address)
-        // expect(balanceBefore).not.to.equal(balanceAfter)
-        // const fundAfter = await donationToken.balanceOf(fund.address)
-        // expect(fundBalBefore).not.to.equal(fundAfter)
-        // const contractBalance = await donationToken.balanceOf(donation.address)
-        // expect(contractBalance).to.equal(0)
+        const [user, fund] = await ethers.getSigners()
+        const fundAmount = 500000000
+        await donation.connect(fund).createFund(fundAmount, '0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E', 0)
+        const fundBalBefore = await donationToken.balanceOf(fund.address)
+        console.log(fundBalBefore)
+        const balanceBefore = await donationToken.balanceOf(user.address)
+        await donationToken.approve(donation.address, fundAmount, {from: user.address})
+        await donation.contribute(0,fundAmount,0,1, {from: user.address})
+        await donation.connect(fund).distribute(0);
+        const balanceAfter = await donationToken.balanceOf(user.address)
+        expect(balanceBefore).not.to.equal(balanceAfter)
+        const fundAfter = await donationToken.balanceOf(fund.address)
+        expect(fundBalBefore).not.to.equal(fundAfter)
+        const contractBalance = await donationToken.balanceOf(donation.address)
+        expect(contractBalance).to.equal(0)
     })
 })
 
