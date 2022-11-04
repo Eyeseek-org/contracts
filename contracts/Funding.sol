@@ -100,6 +100,7 @@ contract Funding is Ownable, ReentrancyGuard {
         require(_level1 > 0, "Invalid amount");
         require(_level1 >= minAmount, "Value is lower than minimum possible amount");
         if (_rewardAmount > 0){
+            require(_rewardAmount > _level1, "Reward amount should be higher than level 1");
             rewardToken = IERC20(_rewardAddress); 
             uint256 bal = rewardToken.balanceOf(msg.sender);
             require(_rewardAmount <= bal, "Not enough token in wallet");
@@ -225,8 +226,7 @@ contract Funding is Ownable, ReentrancyGuard {
         }
     }
 
-    function batchDistribute() public onlyOwner nonReentrant {
-    /// Ideally external function
+    function batchDistribute(IERC20 _rewardTokenAddress) public onlyOwner nonReentrant {
         for (uint256 i = 0; i < funds.length; i++) {
             /// @notice - Only active funds with achieved minimum are eligible for distribution
             /// @notice - Function for automation, checks deadline and handles distribution/cancellation
@@ -239,7 +239,7 @@ contract Funding is Ownable, ReentrancyGuard {
                 funds[i].balance >= funds[i].level1 &&
                 block.timestamp > funds[i].deadline
             ) {
-                distribute(i);
+                distribute(i, _rewardTokenAddress);
             } 
             /// @notice - If not accomplished, funds are returned back to the users on home chain
             else if (
@@ -257,8 +257,8 @@ contract Funding is Ownable, ReentrancyGuard {
     /// @notice Distributes resources to the owner upon successful funding campaign
     /// @notice All related microfunds, and fund are closed
     /// @notice Check all supported currencies and distribute them to the project owner
-    /// @TBD - Distribute rewards to the backers proportionally - I have the function in commit history, need to revive it
-    function distribute(uint256 _id) public nonReentrant {
+    /// @dev TBD - Distribute rewards to the backers proportionally - I have the function in commit history, need to revive it
+    function distribute(uint256 _id, IERC20 _token) public nonReentrant {
         ///@dev TBD add requirements - deadline reached + amount reached...now left for testing purposes
         require(funds[_id].state == 1, "Fund is not active");
             if (funds[_id].usdcBalance > 0){
@@ -274,8 +274,30 @@ contract Funding is Ownable, ReentrancyGuard {
                 funds[_id].balance = 0;
                 emit IncorrectDistribution(true);
             }
+            /// @dev Distribute token reward if there is something locked
+            if (funds[_id].tokenReward > 0){
+                for (uint256 i = 0; i < donations.length; i++) {
+                    if (donations[i].fundId == _id && donations[i].state == 0) {
+                        uint256 proportion = (donations[i].amount * 100) / funds[_id].balance; // Underflow condition not covered
+                        uint256 share = (proportion) * (funds[_id].tokenReward / funds[_id].balance);
+                        ///@notice refund the backers of the EYE token
+                            _token.approve(donations[i].backer, funds[_id].tokenReward);
+                            _token.transferFrom(
+                                address(this),
+                                donations[i].backer,
+                                share
+                            );
+                            donations[i].state = 2;
+                            emit TokenReward(
+                                donations[i].backer,
+                                donations[i].amount,
+                                _id
+                            );
+                        } 
+                }
+            }
 
-            /// @dev TBD this should be ideally handled inside the universal function, so higher level functions could be extracted elsewhere
+            /// @dev TBD State should be ideally handled inside the universal function, so higher level functions could be extracted elsewhere
             funds[_id].usdcBalance = 0; ///@dev closing the fund
             funds[_id].usdtBalance = 0; 
             funds[_id].daiBalance = 0; 
@@ -314,6 +336,8 @@ contract Funding is Ownable, ReentrancyGuard {
                 }
             }
     }
+
+    
     ///@notice - Checks balances for each supported currency and returns funds back to the users
     ///@dev 0=Cancelled, 1=Active, 2=Finished
     ///@dev TBD - Return locked reward to the owner
@@ -496,6 +520,7 @@ contract Funding is Ownable, ReentrancyGuard {
     event MicroClosed(address owner, uint256 cap, uint256 fundId);
     event DistributionAccomplished(address owner, uint256 balance, uint256 currency);
     event Refunded(address backer, uint256 amount, uint256 fundId);
+    event TokenReward(address backer, uint256 amount, uint256 fundId);
     event Returned(address microOwner, uint256 balance, address fundOwner);
     event FundingFee(address project, uint256 fee);
     event PlatformFee(address project, uint256 fee);

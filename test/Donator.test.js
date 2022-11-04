@@ -139,7 +139,7 @@ describe("Chain donation testing", async function () {
         const balanceBefore = await donationToken.balanceOf(user.address)
         await donationToken.approve(donation.address, fundAmount, {from: user.address})
         await donation.contribute(0,fundAmount,0,1, {from: user.address})
-        await donation.connect(fund).distribute(0);
+        await donation.connect(fund).distribute(0, "0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E");
         const balanceAfter = await donationToken.balanceOf(user.address)
         expect(balanceBefore).not.to.equal(balanceAfter)
         const fundAfter = await donationToken.balanceOf(fund.address)
