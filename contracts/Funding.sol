@@ -3,6 +3,7 @@ pragma solidity ^0.8.9;
 
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
@@ -13,7 +14,6 @@ contract Funding is Ownable, ReentrancyGuard {
     IERC20 public usdc;
     IERC20 public usdt;
     IERC20 public dai;
-    IERC20 public rewardToken;
     /// TBD  axlUSDC to add if implementation would be successful
     /// TBD new events to watch - negative scenarios - error log
     /// TBD for each currency needed to separate general functions, ideally create a library
@@ -71,10 +71,23 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 currency; ///@notice 0=Eye, 1=USDC, 2=USDT, 3=DAI
     }
 
+    /// @dev Struct for ERC1155 NFT rewards
+    struct RewardPool {
+        uint256 rewardId;
+        uint256 fundId;
+        uint256 totalNumber;
+        uint256 actualNumber;
+        address receiver;
+        address nftAddress;
+        uint256 nftId;
+        uint256 nftAmount;
+    }
+
 
     Fund[] public funds;
     MicroFund[] public microFunds;
     Donate[] public donations;
+    RewardPool[] public rewards;
 
     constructor(address usdcAddress, address usdtAddress, address daiAddress) 
      {
@@ -82,7 +95,6 @@ contract Funding is Ownable, ReentrancyGuard {
         usdt = IERC20(usdtAddress);
         dai = IERC20(daiAddress);
     }
-
 
     /// @dev temporarily set only 1 level and fixed deadline, to make integration more simple
     /// @notice fund supports multicurrency deposits
@@ -101,7 +113,7 @@ contract Funding is Ownable, ReentrancyGuard {
         require(_level1 >= minAmount, "Value is lower than minimum possible amount");
         if (_rewardAmount > 0){
             require(_rewardAmount > _level1, "Reward amount should be higher than level 1");
-            rewardToken = IERC20(_rewardAddress); 
+            IERC20 rewardToken = IERC20(_rewardAddress);
             uint256 bal = rewardToken.balanceOf(msg.sender);
             require(_rewardAmount <= bal, "Not enough token in wallet");
             rewardToken.transferFrom(msg.sender, address(this), _rewardAmount);
@@ -225,6 +237,39 @@ contract Funding is Ownable, ReentrancyGuard {
             }
         }
     }
+
+    ///@notice Lock ERC1155 as crowdfunding reward - for example game items or NFT collectibles
+    ///@notice One project could have multiple rewards
+    /// TBD needed to distribute rewards after completion, return after cancellation
+    function createNftReward(
+        uint256 _fundId,
+        uint256 _totalNumber,
+        address _receiver,
+        address _nftAddress,
+        uint256 _nftId,
+        uint256 _nftAmount
+    ) public {
+        require(msg.sender != address(0), "Invalid address");
+        require(_totalNumber > 0, "Invalid amount");
+        IERC1155 rewardNft = IERC1155(_nftAddress);
+        uint256 bal = rewardNft.balanceOf(msg.sender);
+        require(_totalNumber <= bal, "Not enough token in wallet");
+        rewardNft.safeTransferFrom(msg.sender, address(this), _nftId, _totalNumber);
+        /// TBD how to handle IDs, how to handle data
+        rewards.push(
+            RewardPool({
+                rewardId: rewards.length,
+                fundId: _fundId,
+                totalNumber: _totalNumber,
+                actualNumber: 0,
+                receiver: _receiver,
+                nftAddress: _nftAddress,
+                nftId: _nftId,
+                nftAmount: _nftAmount
+            })
+        );
+    }
+
 
     function batchDistribute(IERC20 _rewardTokenAddress) public onlyOwner nonReentrant {
         for (uint256 i = 0; i < funds.length; i++) {
