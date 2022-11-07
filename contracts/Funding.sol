@@ -80,14 +80,20 @@ contract Funding is Ownable, ReentrancyGuard {
         address receiver;
         address nftAddress;
         uint256 nftId;
-        uint256 nftAmount;
+        uint256 state; ///@dev 0=Cancelled, 1=Active, 2=Finished
     }
 
+    struct Reward {
+        uint256 rewardId;
+        address receiver;
+        uint256 state; ///@dev 0=Cancelled, 1=Active, 2=Finished
+    }
 
     Fund[] public funds;
     MicroFund[] public microFunds;
     Donate[] public donations;
     RewardPool[] public rewards;
+    Reward[] public rewardList;
 
     constructor(address usdcAddress, address usdtAddress, address daiAddress) 
      {
@@ -148,7 +154,8 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 _amountM,
         uint256 _amountD,
         uint256 _id,
-        uint256 _currency
+        uint256 _currency,
+        bool _nftReward
     ) public isDeadlinePassed(_id) {
         /// @param _amountM - amount of tokens to be sent to microfund
         /// @param _amountD - amount of tokens to be direcly donated
@@ -204,6 +211,16 @@ contract Funding is Ownable, ReentrancyGuard {
             );
             emit MicroCreated(msg.sender, _amountM, _id, _currency);
         }
+        if (_nftReward){
+            rewardList.push(
+                Reward({
+                    rewardId: rewardList.length,
+                    receiver: msg.sender,
+                    state: 1
+                })
+            );
+            /// Verify eligible number + Add actual number after the push RewardPool.[rewardID]
+        }
     }
 
     function drainMicro(uint256 _id, uint256 _amount) internal {
@@ -246,15 +263,14 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 _totalNumber,
         address _receiver,
         address _nftAddress,
-        uint256 _nftId,
-        uint256 _nftAmount
+        uint256 _nftId
     ) public {
         require(msg.sender != address(0), "Invalid address");
         require(_totalNumber > 0, "Invalid amount");
         IERC1155 rewardNft = IERC1155(_nftAddress);
-        uint256 bal = rewardNft.balanceOf(msg.sender);
+        uint256 bal = rewardNft.balanceOf(msg.sender, _nftId);
         require(_totalNumber <= bal, "Not enough token in wallet");
-        rewardNft.safeTransferFrom(msg.sender, address(this), _nftId, _totalNumber);
+        rewardNft.safeTransferFrom(msg.sender, address(this), _nftId, _totalNumber, "");
         /// TBD how to handle IDs, how to handle data
         rewards.push(
             RewardPool({
@@ -265,7 +281,7 @@ contract Funding is Ownable, ReentrancyGuard {
                 receiver: _receiver,
                 nftAddress: _nftAddress,
                 nftId: _nftId,
-                nftAmount: _nftAmount
+                state: 1
             })
         );
     }
@@ -302,7 +318,6 @@ contract Funding is Ownable, ReentrancyGuard {
     /// @notice Distributes resources to the owner upon successful funding campaign
     /// @notice All related microfunds, and fund are closed
     /// @notice Check all supported currencies and distribute them to the project owner
-    /// @dev TBD - Distribute rewards to the backers proportionally - I have the function in commit history, need to revive it
     function distribute(uint256 _id, IERC20 _token) public nonReentrant {
         ///@dev TBD add requirements - deadline reached + amount reached...now left for testing purposes
         require(funds[_id].state == 1, "Fund is not active");
@@ -318,6 +333,25 @@ contract Funding is Ownable, ReentrancyGuard {
             if (funds[_id].balance > 0){
                 funds[_id].balance = 0;
                 emit IncorrectDistribution(true);
+            }
+            /// @dev Distribute an NFT to all backers
+            for (uint256 i = 0; i < rewards.length; i++) {
+                    if (rewards[i].fundId == _id && rewards[i].state == 0) {
+                        for (uint256 j = 0; j < rewardList.length; j++) {
+                            if (rewardList[j].rewardId == rewards[i].rewardId) {
+                                IERC1155 rewardNft = IERC1155(rewards[i].nftAddress);
+                                rewardNft.setApprovalForAll(rewardList[i].receiver, true);
+                                rewardNft.safeTransferFrom(
+                                    address(this),
+                                    rewardList[j].receiver,
+                                    rewards[i].nftId,
+                                    1,
+                                    ""
+                                );
+                            }
+                        }
+                    rewards[i].state = 1;
+                    } 
             }
             /// @dev Distribute token reward if there is something locked
             if (funds[_id].tokenReward > 0){
@@ -553,10 +587,6 @@ contract Funding is Ownable, ReentrancyGuard {
         return backerNumber;
     }
 
-    /// @notice Indicates penalty-free withdrawal period
-    function isPeriodFinished(uint256 _index) public view returns (bool) {
-        return block.timestamp > funds[_index].deadline;
-    }
 
     event FundCreated(address owner, uint256 cap, uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId, uint256 currency);

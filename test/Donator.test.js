@@ -38,6 +38,9 @@ beforeEach(async function () {
     donationToken.transfer(receiver.address, 50000)
     donationToken.transfer(fund.address, 50000)
 
+    const Multi = await ethers.getContractFactory("EyeseekMulti")
+    multiToken = await Multi.deploy()
+    multiToken.safeTransferFrom(multiToken.address, user.address, 0, 1, "")
 
     return {Token, donationToken, donation, user, fund, cancelUser, receiver}
 })
@@ -146,6 +149,12 @@ describe("Chain donation testing", async function () {
         expect(fundBalBefore).not.to.equal(fundAfter)
         const contractBalance = await donationToken.balanceOf(donation.address)
         expect(contractBalance).to.equal(0)
+    })
+    it("Reward creation", async function () {
+        const [user, fund] = await ethers.getSigners()
+        await multiToken.setApprovalForAll(donation.address, true, {from: user.address})
+        const fundAmount = 500000000
+        await donation.connect(fund).createFund(fundAmount, '0x2107B0F3bB0ccc1CcCA94d641c0E2AB61D5b8F3E', 0)
     })
 })
 
