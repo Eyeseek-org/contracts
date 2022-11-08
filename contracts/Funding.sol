@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
+/// import "hardhat/console.sol";
+
 /// @title Chain donation contract
 /// @author Michal Kazdan
 
@@ -42,8 +44,6 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 deadline; // Timespan for crowdfunding to be active
         uint256 state; ///@dev 0=Cancelled, 1=Active, 2=Finished
         uint256 level1;
-        uint256 tokenReward;
-        address tokenRewardAddress;
         uint256 usdcBalance;
         uint256 usdtBalance;
         uint256 daiBalance;
@@ -77,16 +77,17 @@ contract Funding is Ownable, ReentrancyGuard {
         uint256 fundId;
         uint256 totalNumber;
         uint256 actualNumber;
-        address receiver;
-        address nftAddress;
+        address owner;
+        address contractAddress;
+        uint256 erc20amount;
         uint256 nftId;
-        uint256 state; ///@dev 0=Cancelled, 1=Active, 2=Finished
+        uint256 state; ///@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
     }
 
     struct Reward {
         uint256 rewardId;
         address receiver;
-        uint256 state; ///@dev 0=Cancelled, 1=Active, 2=Finished
+        uint256 state; ///@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
     }
 
     Fund[] public funds;
@@ -105,9 +106,7 @@ contract Funding is Ownable, ReentrancyGuard {
     /// @dev temporarily set only 1 level and fixed deadline, to make integration more simple
     /// @notice fund supports multicurrency deposits
     function createFund(
-        uint256 _level1,
-        address _rewardAddress,
-        uint256 _rewardAmount
+        uint256 _level1
     ) public {
         /// @notice Create a new project to be funded
         /// @param _currency - token address, fund could be created in any token, this will be also required for payments // For now always 0
@@ -117,13 +116,6 @@ contract Funding is Ownable, ReentrancyGuard {
         require(msg.sender != address(0), "Invalid address");
         require(_level1 > 0, "Invalid amount");
         require(_level1 >= minAmount, "Value is lower than minimum possible amount");
-        if (_rewardAmount > 0){
-            require(_rewardAmount > _level1, "Reward amount should be higher than level 1");
-            IERC20 rewardToken = IERC20(_rewardAddress);
-            uint256 bal = rewardToken.balanceOf(msg.sender);
-            require(_rewardAmount <= bal, "Not enough token in wallet");
-            rewardToken.transferFrom(msg.sender, address(this), _rewardAmount);
-        }
         // / @dev Only one active fund per address should be allowed (for now disabled)
         // for (uint256 i = 0; i < funds.length; i++) {
         //    require(funds[i].owner == msg.sender && funds[i].state == 0, "You already have a project");
@@ -136,8 +128,6 @@ contract Funding is Ownable, ReentrancyGuard {
                 state: 1,
                 deadline: _deadline,
                 level1: _level1,
-                tokenReward: 0,
-                tokenRewardAddress: _rewardAddress,
                 usdcBalance: 0,
                 usdtBalance: 0,
                 daiBalance: 0
@@ -255,13 +245,41 @@ contract Funding is Ownable, ReentrancyGuard {
         }
     }
 
+    ///@notice Lock ERC20 tokens as crowdfunding reward - utility tokens, governance tokens etc.
+    ///@notice One project could have multiple rewards
+    /// TBD needed to distribute rewards after completion, return after cancellation
+    function createTokenReward(
+        uint256 _fundId,
+        uint256 _totalNumber,
+        uint256 _rewardAmount,
+        address _rewardAddress
+    ) public {
+        require(_rewardAmount > 0, "Reward amount should be higher than 0");
+        IERC20 rewardToken = IERC20(_rewardAddress);
+        uint256 bal = rewardToken.balanceOf(msg.sender);
+        require(_rewardAmount <= bal, "Not enough token in wallet");
+        rewardToken.transferFrom(msg.sender, address(this), _rewardAmount);
+        rewards.push(
+            RewardPool({
+                rewardId: rewards.length,
+                fundId: _fundId,
+                totalNumber: _totalNumber,
+                actualNumber: _totalNumber,
+                owner: msg.sender,
+                contractAddress: _rewardAddress,
+                nftId: 0,
+                erc20amount: _rewardAmount,
+                state: 2 ////@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
+            })
+        );
+    }
+
     ///@notice Lock ERC1155 as crowdfunding reward - for example game items or NFT collectibles
     ///@notice One project could have multiple rewards
     /// TBD needed to distribute rewards after completion, return after cancellation
     function createNftReward(
         uint256 _fundId,
         uint256 _totalNumber,
-        address _receiver,
         address _nftAddress,
         uint256 _nftId
     ) public {
@@ -277,11 +295,12 @@ contract Funding is Ownable, ReentrancyGuard {
                 rewardId: rewards.length,
                 fundId: _fundId,
                 totalNumber: _totalNumber,
-                actualNumber: 0,
-                receiver: _receiver,
-                nftAddress: _nftAddress,
+                actualNumber: _totalNumber,
+                owner: msg.sender,
+                contractAddress: _nftAddress,
                 nftId: _nftId,
-                state: 1
+                erc20amount: 0,
+                state: 1 ///@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
             })
         );
     }
@@ -300,7 +319,7 @@ contract Funding is Ownable, ReentrancyGuard {
                 funds[i].balance >= funds[i].level1 &&
                 block.timestamp > funds[i].deadline
             ) {
-                distribute(i, _rewardTokenAddress);
+                distribute(i);
             } 
             /// @notice - If not accomplished, funds are returned back to the users on home chain
             else if (
@@ -318,28 +337,27 @@ contract Funding is Ownable, ReentrancyGuard {
     /// @notice Distributes resources to the owner upon successful funding campaign
     /// @notice All related microfunds, and fund are closed
     /// @notice Check all supported currencies and distribute them to the project owner
-    function distribute(uint256 _id, IERC20 _token) public nonReentrant {
+    function distribute(uint256 _id) public nonReentrant {
         ///@dev TBD add requirements - deadline reached + amount reached...now left for testing purposes
         require(funds[_id].state == 1, "Fund is not active");
             if (funds[_id].usdcBalance > 0){
                 distributeUni(_id, funds[_id].usdcBalance, 1, usdc);
+                funds[_id].usdcBalance = 0;
             } 
             else if (funds[_id].usdtBalance > 0){
                 distributeUni(_id, funds[_id].usdtBalance, 2, usdt);
+                 funds[_id].usdtBalance = 0; 
             } 
             else if (funds[_id].daiBalance > 0){
                 distributeUni(_id, funds[_id].daiBalance, 3, dai);
+                funds[_id].daiBalance = 0; 
             } 
-            if (funds[_id].balance > 0){
-                funds[_id].balance = 0;
-                emit IncorrectDistribution(true);
-            }
-            /// @dev Distribute an NFT to all backers
+            /// @dev Distribute an NFT to eligible backers
             for (uint256 i = 0; i < rewards.length; i++) {
-                    if (rewards[i].fundId == _id && rewards[i].state == 0) {
+                    if (rewards[i].fundId == _id && rewards[i].state == 1) {
                         for (uint256 j = 0; j < rewardList.length; j++) {
                             if (rewardList[j].rewardId == rewards[i].rewardId) {
-                                IERC1155 rewardNft = IERC1155(rewards[i].nftAddress);
+                                IERC1155 rewardNft = IERC1155(rewards[i].contractAddress);
                                 rewardNft.setApprovalForAll(rewardList[i].receiver, true);
                                 rewardNft.safeTransferFrom(
                                     address(this),
@@ -348,38 +366,35 @@ contract Funding is Ownable, ReentrancyGuard {
                                     1,
                                     ""
                                 );
+                                 emit NftReward(rewardList[j].receiver, rewards[i].contractAddress, rewards[i].fundId);
                             }
                         }
-                    rewards[i].state = 1;
+                    rewards[i].state = 3;
                     } 
             }
-            /// @dev Distribute token reward if there is something locked
-            if (funds[_id].tokenReward > 0){
-                for (uint256 i = 0; i < donations.length; i++) {
-                    if (donations[i].fundId == _id && donations[i].state == 0) {
-                        uint256 proportion = (donations[i].amount * 100) / funds[_id].balance; // Underflow condition not covered
-                        uint256 share = (proportion) * (funds[_id].tokenReward / funds[_id].balance);
-                        ///@notice refund the backers of the EYE token
-                            _token.approve(donations[i].backer, funds[_id].tokenReward);
-                            _token.transferFrom(
-                                address(this),
-                                donations[i].backer,
-                                share
-                            );
-                            donations[i].state = 2;
-                            emit TokenReward(
-                                donations[i].backer,
-                                donations[i].amount,
-                                _id
-                            );
-                        } 
-                }
+            /// @dev Distribute ERC20s to eligible backers
+            for (uint256 i = 0; i < rewards.length; i++) {
+                    if (rewards[i].fundId == _id && rewards[i].state == 1) {
+                        for (uint256 j = 0; j < rewardList.length; j++) {
+                            if (rewardList[j].rewardId == rewards[i].rewardId) {
+                                IERC20 rewardToken = IERC20(rewards[i].contractAddress);
+                                rewardToken.approve(rewardList[i].receiver, rewards[i].erc20amount);
+                                rewardToken.transferFrom(
+                                    address(this),
+                                    rewardList[j].receiver,
+                                    rewards[i].erc20amount
+                                );
+                                emit TokenReward(rewardList[j].receiver, rewards[i].erc20amount, rewards[i].fundId);
+                            }
+                        }
+                    rewards[i].state = 3;
+                } 
             }
-
-            /// @dev TBD State should be ideally handled inside the universal function, so higher level functions could be extracted elsewhere
-            funds[_id].usdcBalance = 0; ///@dev closing the fund
-            funds[_id].usdtBalance = 0; 
-            funds[_id].daiBalance = 0; 
+            /// @dev closing the fund
+            if (funds[_id].balance > 0){
+                funds[_id].balance = 0;
+                emit IncorrectDistribution(true);
+            }
             funds[_id].state = 2;
     }  
 
@@ -419,33 +434,29 @@ contract Funding is Ownable, ReentrancyGuard {
     
     ///@notice - Checks balances for each supported currency and returns funds back to the users
     ///@dev 0=Cancelled, 1=Active, 2=Finished
-    ///@dev TBD - Return locked reward to the owner
+    ///@dev TBD - In prod verify, who can cancel the project
     function cancelFund(uint256 _id) public nonReentrant {
         require(funds[_id].state == 1, "Fund is not active");
-        if (
-            msg.sender == funds[_id].owner || msg.sender == address(this)
-        ) {
             if (funds[_id].usdcBalance > 0){
                 cancelUni(_id, funds[_id].usdcBalance, 1, usdc);
+                funds[_id].usdcBalance = 0; 
             }
             if (funds[_id].usdtBalance > 0){
                 cancelUni(_id, funds[_id].usdtBalance, 2, usdt);
+                funds[_id].usdtBalance = 0; 
             }
             if (funds[_id].daiBalance > 0){
                 cancelUni(_id, funds[_id].daiBalance, 3, dai);
+                funds[_id].daiBalance = 0; 
             }          
-          }
             /// @notice - Ideally project fund should be empty and can be closed
             if (funds[_id].balance == 0) {
-                funds[_id].state = 2;
+                funds[_id].state = 0;
                 emit Cancelled(funds[_id].owner, funds[_id].id);
             } else {
+                funds[_id].balance = 0; 
                 emit IncorrectDistribution(true);
             }
-          ///@dev closing the fund
-            funds[_id].usdtBalance = 0; 
-            funds[_id].daiBalance = 0; 
-            funds[_id].state = 0; ///@notice 0=Cancelled, 1=Active, 2=Finished
          }
         
 
@@ -474,7 +485,7 @@ contract Funding is Ownable, ReentrancyGuard {
                 }
             }
         
-            ///@dev Fund states - 0=Created, 1=Distributed, 2=Refunded
+        ///@dev Fund states - 0=Created, 1=Distributed, 2=Refunded
             for (uint256 i = 0; i < donations.length; i++) {
                 if (donations[i].fundId == _id && donations[i].state == 0 && donations[i].currency == _currency) {
                         _token.approve(address(this), donations[i].amount);
@@ -596,6 +607,7 @@ contract Funding is Ownable, ReentrancyGuard {
     event DistributionAccomplished(address owner, uint256 balance, uint256 currency);
     event Refunded(address backer, uint256 amount, uint256 fundId);
     event TokenReward(address backer, uint256 amount, uint256 fundId);
+    event NftReward(address backer, address contractAddress, uint256 fundId);
     event Returned(address microOwner, uint256 balance, address fundOwner);
     event FundingFee(address project, uint256 fee);
     event PlatformFee(address project, uint256 fee);
