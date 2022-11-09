@@ -6,13 +6,14 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
-/// import "hardhat/console.sol";
+ //import "hardhat/console.sol";
 
 /// @title Chain donation contract
 /// @author Michal Kazdan
 
-contract Funding is Ownable, ReentrancyGuard {
+contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
     IERC20 public usdc;
     IERC20 public usdt;
     IERC20 public dai;
@@ -86,6 +87,7 @@ contract Funding is Ownable, ReentrancyGuard {
 
     struct Reward {
         uint256 rewardId;
+        uint256 rewardItemId;
         address receiver;
         uint256 state; ///@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
     }
@@ -134,18 +136,17 @@ contract Funding is Ownable, ReentrancyGuard {
             })
         );
         emit FundCreated(
-            msg.sender,
-            _level1,
             funds.length
         );
     }
+
 
     function contribute(
         uint256 _amountM,
         uint256 _amountD,
         uint256 _id,
         uint256 _currency,
-        bool _nftReward
+        uint256 _rewardId
     ) public isDeadlinePassed(_id) {
         /// @param _amountM - amount of tokens to be sent to microfund
         /// @param _amountD - amount of tokens to be direcly donated
@@ -183,8 +184,10 @@ contract Funding is Ownable, ReentrancyGuard {
                     currency: _currency /// TBD flexible in last stage
                 })
             );
-            emit Donated(msg.sender, _amountD, _id, _currency);
-            drainMicro(_id, _amountD);
+            ///@notice Add total drained amount to the donated event for stats
+            uint256 drained = 0;
+            drained = drainMicro(_id, _amountD);
+            emit Donated(msg.sender, _amountD, _id, _currency, drained);
         }
         /// @notice If microfund created, it is added to the list
         if (_amountM > 0) {
@@ -201,21 +204,64 @@ contract Funding is Ownable, ReentrancyGuard {
             );
             emit MicroCreated(msg.sender, _amountM, _id, _currency);
         }
-        if (_nftReward){
-            rewardList.push(
+        rewardCharge(_rewardId);
+    }
+
+    ///@notice Helper reward pool function to gather non-token related rewards
+    ///@dev Need to create fake fund 0, with fake pool 0
+    function createZeroData() public onlyOwner {
+        funds.push(
+            Fund({
+                owner: address(0),
+                balance: 0,
+                id: funds.length,
+                state: 1,
+                deadline: 0,
+                level1: 500,
+                usdcBalance: 0,
+                usdtBalance: 0,
+                daiBalance: 0
+            })
+        );
+        rewards.push(
+            RewardPool({
+                rewardId: rewards.length,
+                fundId: 0,
+                totalNumber: 1000000000000000,
+                actualNumber: 0,
+                owner: msg.sender,
+                contractAddress: address(0),
+                erc20amount: 0,
+                nftId: 0,
+                state: 1
+            })
+        );
+    }
+
+    /// @notice Internal function to achieve reward eligibility in case contribution offers this option
+    function rewardCharge (uint256 _rewardId) internal {
+        require(rewards[_rewardId].state == 1, "Reward is not active or full");
+        require(rewards[_rewardId].actualNumber < rewards[_rewardId].totalNumber, "All rewards are distributed");
+        ///@dev Add reward counter and contributor to the whitelist
+        rewards[_rewardId].actualNumber = rewards[_rewardId].actualNumber + 1;
+        rewardList.push(
                 Reward({
-                    rewardId: rewardList.length,
+                    rewardItemId: rewardList.length,
+                    rewardId: rewards[_rewardId].rewardId,
                     receiver: msg.sender,
                     state: 1
                 })
             );
-            /// Verify eligible number + Add actual number after the push RewardPool.[rewardID]
+        if (rewards[_rewardId].actualNumber == rewards[_rewardId].totalNumber) {
+            rewards[_rewardId].state = 5; ///@dev Reward list is full
         }
     }
 
-    function drainMicro(uint256 _id, uint256 _amount) internal {
+
+    function drainMicro(uint256 _id, uint256 _amount) internal returns(uint256) {
         /// @notice Find all active microfunds related to the main fund and join the chain donation
         /// @notice Currency agnostic as all using stablecoin, if backer donates in DAI, microfund in USDC will join with USDC
+        uint256 totalDrained = 0;
         for (uint256 i = 0; i < microFunds.length; i++) {
             if (
                 microFunds[i].cap - microFunds[i].microBalance >= _amount &&
@@ -224,6 +270,7 @@ contract Funding is Ownable, ReentrancyGuard {
             ) {
                 microFunds[i].microBalance += _amount;
                 funds[_id].balance += _amount;
+                totalDrained += _amount;
                 if (microFunds[i].currency == 1){
                     funds[_id].usdcBalance += _amount;
                 } else if (microFunds[i].currency == 2){
@@ -243,11 +290,11 @@ contract Funding is Ownable, ReentrancyGuard {
                 emit MicroDrained(microFunds[i].owner, _amount, _id); // TBD table
             }
         }
+        return totalDrained;
     }
 
     ///@notice Lock ERC20 tokens as crowdfunding reward - utility tokens, governance tokens etc.
     ///@notice One project could have multiple rewards
-    /// TBD needed to distribute rewards after completion, return after cancellation
     function createTokenReward(
         uint256 _fundId,
         uint256 _totalNumber,
@@ -272,6 +319,14 @@ contract Funding is Ownable, ReentrancyGuard {
                 state: 2 ////@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
             })
         );
+        emit RewardCreated(
+            rewards.length,
+            msg.sender,
+            _rewardAddress,
+            _rewardAmount,
+            _fundId,
+            false
+        );
     }
 
     ///@notice Lock ERC1155 as crowdfunding reward - for example game items or NFT collectibles
@@ -287,7 +342,7 @@ contract Funding is Ownable, ReentrancyGuard {
         require(_totalNumber > 0, "Invalid amount");
         IERC1155 rewardNft = IERC1155(_nftAddress);
         uint256 bal = rewardNft.balanceOf(msg.sender, _nftId);
-        require(_totalNumber <= bal, "Not enough token in wallet");
+     //   require(_totalNumber <= bal, "Not enough token in wallet");
         rewardNft.safeTransferFrom(msg.sender, address(this), _nftId, _totalNumber, "");
         /// TBD how to handle IDs, how to handle data
         rewards.push(
@@ -303,36 +358,42 @@ contract Funding is Ownable, ReentrancyGuard {
                 state: 1 ///@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
             })
         );
+        emit RewardCreated(
+            rewards.length,
+            msg.sender,
+            _nftAddress,
+            _totalNumber,
+            _fundId,
+            true
+        );
     }
 
-
-    function batchDistribute(IERC20 _rewardTokenAddress) public onlyOwner nonReentrant {
-        for (uint256 i = 0; i < funds.length; i++) {
-            /// @notice - Only active funds with achieved minimum are eligible for distribution
-            /// @notice - Function for automation, checks deadline and handles distribution/cancellation
-            if (block.timestamp < funds[i].deadline) {
-                continue;
-            }
-            /// @notice - Fund accomplished minimum goal
-            if (
-                funds[i].state == 1 &&
-                funds[i].balance >= funds[i].level1 &&
-                block.timestamp > funds[i].deadline
-            ) {
-                distribute(i);
-            } 
-            /// @notice - If not accomplished, funds are returned back to the users on home chain
-            else if (
-                funds[i].state == 1 &&
-                funds[i].balance < funds[i].level1 &&
-                block.timestamp > funds[i].deadline
-            ) {
-                cancelFund(i);
-            }
-        }
-        // For each active fund check if cap is reached and if so
-        // Call function "distributeRewards" pro každý font
-    }
+    // Saving space
+    // function batchDistribute(IERC20 _rewardTokenAddress) public onlyOwner nonReentrant {
+    //     for (uint256 i = 0; i < funds.length; i++) {
+    //         /// @notice - Only active funds with achieved minimum are eligible for distribution
+    //         /// @notice - Function for automation, checks deadline and handles distribution/cancellation
+    //         if (block.timestamp < funds[i].deadline) {
+    //             continue;
+    //         }
+    //         /// @notice - Fund accomplished minimum goal
+    //         if (
+    //             funds[i].state == 1 &&
+    //             funds[i].balance >= funds[i].level1 &&
+    //             block.timestamp > funds[i].deadline
+    //         ) {
+    //             distribute(i);
+    //         } 
+    //         /// @notice - If not accomplished, funds are returned back to the users on home chain
+    //         else if (
+    //             funds[i].state == 1 &&
+    //             funds[i].balance < funds[i].level1 &&
+    //             block.timestamp > funds[i].deadline
+    //         ) {
+    //             cancelFund(i);
+    //         }
+    //     }
+    // }
 
     /// @notice Distributes resources to the owner upon successful funding campaign
     /// @notice All related microfunds, and fund are closed
@@ -352,11 +413,12 @@ contract Funding is Ownable, ReentrancyGuard {
                 distributeUni(_id, funds[_id].daiBalance, 3, dai);
                 funds[_id].daiBalance = 0; 
             } 
-            /// @dev Distribute an NFT to eligible backers
+            /// @notice Distribute token reward to eligible users
             for (uint256 i = 0; i < rewards.length; i++) {
-                    if (rewards[i].fundId == _id && rewards[i].state == 1) {
+                    if (rewards[i].fundId == _id ) {
                         for (uint256 j = 0; j < rewardList.length; j++) {
-                            if (rewardList[j].rewardId == rewards[i].rewardId) {
+                            ///@notice - Check NFT rewards 
+                            if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 1) {
                                 IERC1155 rewardNft = IERC1155(rewards[i].contractAddress);
                                 rewardNft.setApprovalForAll(rewardList[i].receiver, true);
                                 rewardNft.safeTransferFrom(
@@ -368,15 +430,8 @@ contract Funding is Ownable, ReentrancyGuard {
                                 );
                                  emit NftReward(rewardList[j].receiver, rewards[i].contractAddress, rewards[i].fundId);
                             }
-                        }
-                    rewards[i].state = 3;
-                    } 
-            }
-            /// @dev Distribute ERC20s to eligible backers
-            for (uint256 i = 0; i < rewards.length; i++) {
-                    if (rewards[i].fundId == _id && rewards[i].state == 1) {
-                        for (uint256 j = 0; j < rewardList.length; j++) {
-                            if (rewardList[j].rewardId == rewards[i].rewardId) {
+                            ///@notice - Check ERC20 rewards
+                            else if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 2){
                                 IERC20 rewardToken = IERC20(rewards[i].contractAddress);
                                 rewardToken.approve(rewardList[i].receiver, rewards[i].erc20amount);
                                 rewardToken.transferFrom(
@@ -388,7 +443,7 @@ contract Funding is Ownable, ReentrancyGuard {
                             }
                         }
                     rewards[i].state = 3;
-                } 
+                    } 
             }
             /// @dev closing the fund
             if (funds[_id].balance > 0){
@@ -431,7 +486,6 @@ contract Funding is Ownable, ReentrancyGuard {
             }
     }
 
-    
     ///@notice - Checks balances for each supported currency and returns funds back to the users
     ///@dev 0=Cancelled, 1=Active, 2=Finished
     ///@dev TBD - In prod verify, who can cancel the project
@@ -599,13 +653,14 @@ contract Funding is Ownable, ReentrancyGuard {
     }
 
 
-    event FundCreated(address owner, uint256 cap, uint256 id);
+    event FundCreated(uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId, uint256 currency);
-    event Donated(address donator, uint256 amount, uint256 fundId, uint256 currency);
+    event Donated(address donator, uint256 amount, uint256 fundId, uint256 currency, uint256 microDrained);
     event MicroDrained(address owner, uint256 amount, uint256 fundId);
     event MicroClosed(address owner, uint256 cap, uint256 fundId);
     event DistributionAccomplished(address owner, uint256 balance, uint256 currency);
     event Refunded(address backer, uint256 amount, uint256 fundId);
+    event RewardCreated (uint256 rewardId, address owner, address contractAddress, uint256 amount, uint256 fundId, bool nftType);
     event TokenReward(address backer, uint256 amount, uint256 fundId);
     event NftReward(address backer, address contractAddress, uint256 fundId);
     event Returned(address microOwner, uint256 balance, address fundOwner);

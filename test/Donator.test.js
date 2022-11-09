@@ -42,6 +42,7 @@ beforeEach(async function () {
     multiToken = await Multi.deploy()
     multiToken.safeTransferFrom(multiToken.address, user.address, 0, 1, "")
 
+    await donation.createZeroData();
     const fundAmount = 500000000
     await donation.connect(fund).createFund(fundAmount)
 
@@ -114,20 +115,19 @@ describe("Chain donation testing", async function () {
     it("Cancel fund - Distributes resources back", async function () {
         const [user, fund] = await ethers.getSigners()
         const fundAmount = 500000000
-        await donation.connect(user).createFund(fundAmount)
         const balanceBefore = await donationToken.balanceOf(user.address)
         await donationToken.approve(donation.address, 1 * fundAmount, {from: user.address})
         await usdtToken.approve(donation.address, 2 * fundAmount, {from: user.address})
-        await donation.contribute(0,fundAmount,0,1, {from: user.address})
-        await donation.contribute(fundAmount,fundAmount,0,2, {from: user.address})
+        await donation.contribute(0,fundAmount,1,1,0, {from: user.address})
+        await donation.contribute(fundAmount,fundAmount,1,2,0, {from: user.address})
 
         await usdtToken.approve(donation.address, 500, {from: user.address})
-        await donation.createTokenReward(0,50,500,usdtToken.address, {from: user.address})
+        await donation.createTokenReward(1,50,500,usdtToken.address, {from: user.address})
 
-        const multiBalance = await multiToken.balanceOf(user.address, 1)
+        const multiBalance = await multiToken.balanceOf(user.address, 0)
         console.log("Multi balance before: " + multiBalance)
         await multiToken.setApprovalForAll(donation.address, true, {from: user.address})
-   //     await donation.createNftReward(0,1, multiToken.address, 0, {from: user.address})
+   //     await donation.createNftReward(1,1, multiToken.address, 0, {from: user.address})
 
 
 
@@ -141,16 +141,14 @@ describe("Chain donation testing", async function () {
     it("Fund distribution", async function () {
         const [user, fund] = await ethers.getSigners()
         const fundAmount = 500000000
-        const fundBalBefore = await donationToken.balanceOf(fund.address)
-        console.log(fundBalBefore)
         const balanceBefore = await donationToken.balanceOf(user.address)
         await donationToken.approve(donation.address, fundAmount, {from: user.address})
-        await donation.contribute(0,fundAmount,0,1, {from: user.address})
-        await donation.connect(fund).distribute(0);
+        await donation.contribute(0,fundAmount,1,1,0, {from: user.address})
+        await donation.connect(fund).distribute(1);
         const balanceAfter = await donationToken.balanceOf(user.address)
         expect(balanceBefore).not.to.equal(balanceAfter)
         const fundAfter = await donationToken.balanceOf(fund.address)
-        expect(fundBalBefore).not.to.equal(fundAfter)
+        expect(balanceBefore).not.to.equal(fundAfter)
         const contractBalance = await donationToken.balanceOf(donation.address)
         expect(contractBalance).to.equal(0)
     })
