@@ -202,7 +202,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
                     currency: _currency
                 })
             );
-            emit MicroCreated(msg.sender, _amountM, _id, _currency);
+            emit MicroCreated(msg.sender, _amountM, _id, _currency, microFunds.length);
         }
         rewardCharge(_rewardId);
     }
@@ -654,7 +654,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
 
 
     event FundCreated(uint256 id);
-    event MicroCreated(address owner, uint256 cap, uint256 fundId, uint256 currency);
+    event MicroCreated(address owner, uint256 cap, uint256 fundId, uint256 currency, uint256 microId);
     event Donated(address donator, uint256 amount, uint256 fundId, uint256 currency, uint256 microDrained);
     event MicroDrained(address owner, uint256 amount, uint256 fundId);
     event MicroClosed(address owner, uint256 cap, uint256 fundId);
