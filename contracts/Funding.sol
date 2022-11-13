@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
- //import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 /// @title Chain donation contract
 /// @author Michal Kazdan
@@ -160,17 +160,17 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
         /// @dev Currency recognition
         if (_currency == 1) {
             usdc.transferFrom(msg.sender, address(this), _amountD + _amountM);
-            funds[_id].usdcBalance +=  _amountD + _amountM;
+            funds[_id].usdcBalance +=  _amountD;
         } else if (_currency == 2)  {
             usdt.transferFrom(msg.sender, address(this), _amountD + _amountM);
-            funds[_id].usdtBalance +=  _amountD + _amountM;
+            funds[_id].usdtBalance +=  _amountD;
         } else if (_currency == 3){
             dai.transferFrom(msg.sender, address(this), _amountD + _amountM);
-            funds[_id].daiBalance +=  _amountD + _amountM;
+            funds[_id].daiBalance +=  _amountD;
         } else {
             revert("Invalid currency");
         }
-        funds[_id].balance += _amountD + _amountM;
+        funds[_id].balance += _amountD;
         /// @notice If donated, fund adds balance and related microfunds are involed
         /// @notice Updated the direct donations
         if (_amountD > 0) {
@@ -414,37 +414,37 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
                 funds[_id].daiBalance = 0; 
             } 
             /// @notice Distribute token reward to eligible users
-            for (uint256 i = 0; i < rewards.length; i++) {
-                    if (rewards[i].fundId == _id ) {
-                        for (uint256 j = 0; j < rewardList.length; j++) {
-                            ///@notice - Check NFT rewards 
-                            if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 1) {
-                                IERC1155 rewardNft = IERC1155(rewards[i].contractAddress);
-                                rewardNft.setApprovalForAll(rewardList[i].receiver, true);
-                                rewardNft.safeTransferFrom(
-                                    address(this),
-                                    rewardList[j].receiver,
-                                    rewards[i].nftId,
-                                    1,
-                                    ""
-                                );
-                                 emit NftReward(rewardList[j].receiver, rewards[i].contractAddress, rewards[i].fundId);
-                            }
-                            ///@notice - Check ERC20 rewards
-                            else if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 2){
-                                IERC20 rewardToken = IERC20(rewards[i].contractAddress);
-                                rewardToken.approve(rewardList[i].receiver, rewards[i].erc20amount);
-                                rewardToken.transferFrom(
-                                    address(this),
-                                    rewardList[j].receiver,
-                                    rewards[i].erc20amount
-                                );
-                                emit TokenReward(rewardList[j].receiver, rewards[i].erc20amount, rewards[i].fundId);
-                            }
-                        }
-                    rewards[i].state = 3;
-                    } 
-            }
+            // for (uint256 i = 0; i < rewards.length; i++) {
+            //         if (rewards[i].fundId == _id ) {
+            //             for (uint256 j = 0; j < rewardList.length; j++) {
+            //                 ///@notice - Check NFT rewards 
+            //                 if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 1) {
+            //                     IERC1155 rewardNft = IERC1155(rewards[i].contractAddress);
+            //                     rewardNft.setApprovalForAll(rewardList[i].receiver, true);
+            //                     rewardNft.safeTransferFrom(
+            //                         address(this),
+            //                         rewardList[j].receiver,
+            //                         rewards[i].nftId,
+            //                         1,
+            //                         ""
+            //                     );
+            //                      emit NftReward(rewardList[j].receiver, rewards[i].contractAddress, rewards[i].fundId);
+            //                 }
+            //                 ///@notice - Check ERC20 rewards
+            //                 else if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 2){
+            //                     IERC20 rewardToken = IERC20(rewards[i].contractAddress);
+            //                     rewardToken.approve(rewardList[i].receiver, rewards[i].erc20amount);
+            //                     rewardToken.transferFrom(
+            //                         address(this),
+            //                         rewardList[j].receiver,
+            //                         rewards[i].erc20amount
+            //                     );
+            //                     emit TokenReward(rewardList[j].receiver, rewards[i].erc20amount, rewards[i].fundId);
+            //                 }
+            //             }
+            //         rewards[i].state = 3;
+            //         } 
+            // }
             /// @dev closing the fund
             if (funds[_id].balance > 0){
                 funds[_id].balance = 0;
@@ -453,7 +453,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
             funds[_id].state = 2;
     }  
 
-    function distributeUni(uint256 _id, uint256 _fundBalance, uint256 _currency, IERC20 _token) internal {
+    function distributeUni(uint256 _id, uint256 _fundBalance, uint256 _currency, IERC20 _token) internal  {
             _token.approve(address(this), _fundBalance);
              /// @notice Take 1% fee to Eyeseek treasury
             uint256 fee = (_fundBalance * 1) / 100;
@@ -480,7 +480,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
                             funds[_id].owner
                         );
                     }
-                    microFunds[_id].microBalance = 0; ///@dev resets the microfund
+                    microFunds[i].microBalance = 0; ///@dev resets the microfund
                     microFunds[i].state = 2; ///@dev closing the microfunds
                 }
             }
