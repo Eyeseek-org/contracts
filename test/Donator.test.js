@@ -81,6 +81,9 @@ describe("Chain donation testing", async function () {
         await donation.contribute(microfund,0,1,1,0, {from: user.address})
         await donation.contribute(0,donateAmount,1,1,0, {from: user.address})
 
+        // const backers = await donation.getBackerAddresses(1)
+        // expect(backers.length).to.equal(2)
+
         // Check multiplier, 4x multiplier from microfunds + donation
         const prediction = await donation.calcOutcome(1,100)
         expect(prediction).to.equal(400)
@@ -108,12 +111,12 @@ describe("Chain donation testing", async function () {
         await donation.contribute(fundAmount,fundAmount,1,2,0, {from: user.address})
 
         await usdtToken.approve(donation.address, 500, {from: user.address})
-        await donation.createTokenReward(1,50,500,usdtToken.address, {from: user.address})
+        await donation.createReward(1,50,500,usdtToken.address,1, {from: user.address})
 
         const multiBalance = await multiToken.balanceOf(user.address, 0)
         console.log("Multi balance before: " + multiBalance)
         await multiToken.setApprovalForAll(donation.address, true, {from: user.address})
-    //    await donation.createNftReward(1,1, multiToken.address, 0, {from: user.address})
+    //    await donation.createReward(1,1, multiToken.address, 0, {from: user.address})
 
         await donation.connect(fund).cancelFund(0);
     })

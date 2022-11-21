@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 /// @title Chain donation contract
 /// @author Michal Kazdan
@@ -257,7 +257,6 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
         }
     }
 
-
     function drainMicro(uint256 _id, uint256 _amount) internal returns(uint256) {
         /// @notice Find all active microfunds related to the main fund and join the chain donation
         /// @notice Currency agnostic as all using stablecoin, if backer donates in DAI, microfund in USDC will join with USDC
@@ -295,76 +294,71 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
 
     ///@notice Lock ERC20 tokens as crowdfunding reward - utility tokens, governance tokens etc.
     ///@notice One project could have multiple rewards
-    function createTokenReward(
+    function createReward(
         uint256 _fundId,
         uint256 _totalNumber,
         uint256 _rewardAmount,
-        address _rewardAddress
+        address _tokenAddress,
+        uint256 _type
     ) public {
         require(_rewardAmount > 0, "Reward amount should be higher than 0");
-        IERC20 rewardToken = IERC20(_rewardAddress);
-        uint256 bal = rewardToken.balanceOf(msg.sender);
-        require(_rewardAmount <= bal, "Not enough token in wallet");
-        rewardToken.transferFrom(msg.sender, address(this), _rewardAmount);
-        rewards.push(
-            RewardPool({
-                rewardId: rewards.length,
-                fundId: _fundId,
-                totalNumber: _totalNumber,
-                actualNumber: _totalNumber,
-                owner: msg.sender,
-                contractAddress: _rewardAddress,
-                nftId: 0,
-                erc20amount: _rewardAmount,
-                state: 2 ////@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
-            })
-        );
+        if (_type == 0){
+            rewards.push(
+                RewardPool({
+                    rewardId: rewards.length,
+                    fundId: _fundId,
+                    totalNumber: _totalNumber,
+                    actualNumber: _totalNumber,
+                    owner: msg.sender,
+                    contractAddress: _tokenAddress, ///@dev Needed zero address to be filled on FE
+                    nftId: 0,
+                    erc20amount: 0,
+                    state: 0 ////@dev 0=Basic actuve 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
+            }));
+        } else if (_type == 1){
+                    IERC20 rewardToken = IERC20(_tokenAddress);
+                    uint256 bal = rewardToken.balanceOf(msg.sender);
+                    require(_rewardAmount <= bal, "Not enough token in wallet");
+                    rewardToken.transferFrom(msg.sender, address(this), _rewardAmount);
+                    rewards.push(
+                        RewardPool({
+                            rewardId: rewards.length,
+                            fundId: _fundId,
+                            totalNumber: _totalNumber,
+                            actualNumber: _totalNumber,
+                            owner: msg.sender,
+                            contractAddress: _tokenAddress,
+                            nftId: 0,
+                            erc20amount: _rewardAmount,
+                            state: 2 ////@dev 0=Basic actuve 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
+            }));
+        } else if (_type == 2){
+                    require(msg.sender != address(0), "Invalid address");
+                    require(_totalNumber > 0, "Invalid amount");
+                    IERC1155 rewardNft = IERC1155(_tokenAddress);
+                 //   uint256 bal = rewardNft.balanceOf(msg.sender, _rewardAmount);
+                //   require(_totalNumber <= bal, "Not enough token in wallet");
+                    rewardNft.safeTransferFrom(msg.sender, address(this), _rewardAmount, _totalNumber, "");
+                    rewards.push(
+                        RewardPool({
+                            rewardId: rewards.length,
+                            fundId: _fundId,
+                            totalNumber: _totalNumber,
+                            actualNumber: _totalNumber,
+                            owner: msg.sender,
+                            contractAddress: _tokenAddress,
+                            nftId: _rewardAmount,
+                            erc20amount: 0,
+                            state: 1 ///@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
+                        }));
+        }
         emit RewardCreated(
             rewards.length,
             msg.sender,
-            _rewardAddress,
+            _tokenAddress,
             _rewardAmount,
             _fundId,
-            false
-        );
-    }
-
-    ///@notice Lock ERC1155 as crowdfunding reward - for example game items or NFT collectibles
-    ///@notice One project could have multiple rewards
-    /// TBD needed to distribute rewards after completion, return after cancellation
-    function createNftReward(
-        uint256 _fundId,
-        uint256 _totalNumber,
-        address _nftAddress,
-        uint256 _nftId
-    ) public {
-        require(msg.sender != address(0), "Invalid address");
-        require(_totalNumber > 0, "Invalid amount");
-        IERC1155 rewardNft = IERC1155(_nftAddress);
-        uint256 bal = rewardNft.balanceOf(msg.sender, _nftId);
-     //   require(_totalNumber <= bal, "Not enough token in wallet");
-        rewardNft.safeTransferFrom(msg.sender, address(this), _nftId, _totalNumber, "");
-        /// TBD how to handle IDs, how to handle data
-        rewards.push(
-            RewardPool({
-                rewardId: rewards.length,
-                fundId: _fundId,
-                totalNumber: _totalNumber,
-                actualNumber: _totalNumber,
-                owner: msg.sender,
-                contractAddress: _nftAddress,
-                nftId: _nftId,
-                erc20amount: 0,
-                state: 1 ///@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
-            })
-        );
-        emit RewardCreated(
-            rewards.length,
-            msg.sender,
-            _nftAddress,
-            _totalNumber,
-            _fundId,
-            true
+            _type
         );
     }
 
@@ -414,37 +408,37 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
                 funds[_id].daiBalance = 0; 
             } 
             /// @notice Distribute token reward to eligible users
-            // for (uint256 i = 0; i < rewards.length; i++) {
-            //         if (rewards[i].fundId == _id ) {
-            //             for (uint256 j = 0; j < rewardList.length; j++) {
-            //                 ///@notice - Check NFT rewards 
-            //                 if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 1) {
-            //                     IERC1155 rewardNft = IERC1155(rewards[i].contractAddress);
-            //                     rewardNft.setApprovalForAll(rewardList[i].receiver, true);
-            //                     rewardNft.safeTransferFrom(
-            //                         address(this),
-            //                         rewardList[j].receiver,
-            //                         rewards[i].nftId,
-            //                         1,
-            //                         ""
-            //                     );
-            //                      emit NftReward(rewardList[j].receiver, rewards[i].contractAddress, rewards[i].fundId);
-            //                 }
-            //                 ///@notice - Check ERC20 rewards
-            //                 else if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 2){
-            //                     IERC20 rewardToken = IERC20(rewards[i].contractAddress);
-            //                     rewardToken.approve(rewardList[i].receiver, rewards[i].erc20amount);
-            //                     rewardToken.transferFrom(
-            //                         address(this),
-            //                         rewardList[j].receiver,
-            //                         rewards[i].erc20amount
-            //                     );
-            //                     emit TokenReward(rewardList[j].receiver, rewards[i].erc20amount, rewards[i].fundId);
-            //                 }
-            //             }
-            //         rewards[i].state = 3;
-            //         } 
-            // }
+            for (uint256 i = 0; i < rewards.length; i++) {
+                    if (rewards[i].fundId == _id ) {
+                        for (uint256 j = 0; j < rewardList.length; j++) {
+                            ///@notice - Check NFT rewards 
+                            if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 1) {
+                                IERC1155 rewardNft = IERC1155(rewards[i].contractAddress);
+                                rewardNft.setApprovalForAll(rewardList[i].receiver, true);
+                                rewardNft.safeTransferFrom(
+                                    address(this),
+                                    rewardList[j].receiver,
+                                    rewards[i].nftId,
+                                    1,
+                                    ""
+                                );
+                                 emit NftReward(rewardList[j].receiver, rewards[i].contractAddress, rewards[i].fundId);
+                            }
+                            ///@notice - Check ERC20 rewards
+                            else if (rewardList[j].rewardId == rewards[i].rewardId && rewards[i].state == 2){
+                                IERC20 rewardToken = IERC20(rewards[i].contractAddress);
+                                rewardToken.approve(rewardList[i].receiver, rewards[i].erc20amount);
+                                rewardToken.transferFrom(
+                                    address(this),
+                                    rewardList[j].receiver,
+                                    rewards[i].erc20amount
+                                );
+                                emit TokenReward(rewardList[j].receiver, rewards[i].erc20amount, rewards[i].fundId);
+                            }
+                        }
+                    rewards[i].state = 3;
+                    } 
+            }
             /// @dev closing the fund
             if (funds[_id].balance > 0){
                 funds[_id].balance = 0;
@@ -652,6 +646,53 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
         return backerNumber;
     }
 
+    // function getEligibleRewards(uint256 _index) public view returns (uint256) {
+    //     uint256 rewardNumber = 0;
+    //     for (uint256 i = 0; i < rewards.length; i++) {
+    //         if (
+    //             rewards[i].fundId == _index &&
+    //             rewards[i].state == 0
+    //         ) {
+    //             rewardNumber++;
+    //         }
+    //     }
+    //     return rewardNumber;
+    // }
+
+    // function getBackerAddresses(uint256 _index)
+    //     public
+    //     view
+    //     returns (address[] memory)
+    // {
+    //     address[] memory backerAddresses = new address[](getBackers(_index));
+    //     uint256 backerNumber = 0;
+    //     for (uint256 i = 0; i < donations.length; i++) {
+    //         if (
+    //             donations[i].fundId == _index
+    //         ) {
+    //             backerAddresses[backerNumber] = donations[i].backer;
+    //             backerNumber++;
+    //         }
+    //     }
+    //     return backerAddresses;
+    // }
+
+
+    // function getRewardReceivers(uint256 _index) public view returns (address[] memory)
+    //     {
+    //         address[] memory rewardReceivers = new address[](getEligibleRewards(_index));
+    //         uint256 rewardNumber = 0;
+    //         for (uint256 i = 0; i < rewardList.length; i++) {
+    //             if (
+    //                 rewardList[i].rewardId == _index 
+    //             ) {
+    //                 rewardReceivers[rewardNumber] = rewardList[i].receiver;
+    //                 rewardNumber++;
+    //             }
+    //         }
+    //         return rewardReceivers;
+    //     }
+
 
     event FundCreated(uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId, uint256 currency, uint256 microId);
@@ -660,7 +701,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard {
     event MicroClosed(address owner, uint256 cap, uint256 fundId);
     event DistributionAccomplished(address owner, uint256 balance, uint256 currency);
     event Refunded(address backer, uint256 amount, uint256 fundId);
-    event RewardCreated (uint256 rewardId, address owner, address contractAddress, uint256 amount, uint256 fundId, bool nftType);
+    event RewardCreated (uint256 rewardId, address owner, address contractAddress, uint256 amount, uint256 fundId, uint256 rewardType);
     event TokenReward(address backer, uint256 amount, uint256 fundId);
     event NftReward(address backer, address contractAddress, uint256 fundId);
     event Returned(address microOwner, uint256 balance, address fundOwner);
