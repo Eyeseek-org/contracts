@@ -3,6 +3,11 @@ const {expect} = require("chai")
 
 let user, donationToken, donation, fund, cancelUser, receiver
 
+// Run tests with tracer
+// npx hardhat test --trace      # shows logs + calls
+// npx hardhat test --fulltrace  # shows logs + calls + sloads + sstores
+// npx hardhat test --trace --opcodes ADD,SUB # shows any opcode specified
+
 
 beforeEach(async function () {
     // environment preparation, deploy token & staking contracts
@@ -25,13 +30,8 @@ beforeEach(async function () {
     usdtToken.transfer(user.address, 5000000000)
     usdtToken.transfer(fund.address, 5000000000)
 
-    const Dai = await ethers.getContractFactory("Token")
-    daiToken = await Dai.deploy()
-    daiToken.transfer(user.address, 5000000000)
-    daiToken.transfer(user.address, 5000000000)
-
     const Donation = await ethers.getContractFactory("Funding")
-    donation = await Donation.deploy( donationToken.address, usdtToken.address, daiToken.address)
+    donation = await Donation.deploy(donationToken.address, usdtToken.address)
     stakeAmount = ethers.utils.parseUnits("1000000", 1)
     donationToken.transfer(user.address, stakeAmount)
     donationToken.transfer(cancelUser.address, 50000)
@@ -41,6 +41,8 @@ beforeEach(async function () {
     const Multi = await ethers.getContractFactory("EyeseekMulti")
     multiToken = await Multi.deploy()
     multiToken.safeTransferFrom(multiToken.address, user.address, 0, 1, "")
+
+
 
     await donation.createZeroData();
     const fundAmount = 500000000
@@ -96,6 +98,7 @@ describe("Chain donation testing", async function () {
 
         // Test distribution after completion
         // Closing microfunds, closing funds, token contract should be free of tokens
+        // Distribute nefunguje
         await donation.distribute(1);
         const fundBalance = await donationToken.balanceOf(donation.address)
         expect(fundBalance).to.equal(0)
@@ -110,15 +113,17 @@ describe("Chain donation testing", async function () {
         await donation.contribute(0,fundAmount,1,1,0, {from: user.address})
         await donation.contribute(fundAmount,fundAmount,1,2,0, {from: user.address})
 
-        await usdtToken.approve(donation.address, 500, {from: user.address})
-        await donation.createReward(1,50,500,usdtToken.address,1, {from: user.address})
+        await usdcToken.approve(donation.address, 500, {from: user.address})
+        await donation.createReward(1,1,100,usdcToken.address,1, {from: user.address})
+        await donation.createReward(1,50,1,usdcToken.address,0, {from: user.address})
+        // Debug reward
 
         const multiBalance = await multiToken.balanceOf(user.address, 0)
         console.log("Multi balance before: " + multiBalance)
         await multiToken.setApprovalForAll(donation.address, true, {from: user.address})
     //    await donation.createReward(1,1, multiToken.address, 0, {from: user.address})
 
-        await donation.connect(fund).cancelFund(0);
+        await donation.cancelFund(0, {from: user.address});
     })
 })
 

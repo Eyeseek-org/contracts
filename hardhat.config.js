@@ -1,12 +1,14 @@
 require('@nomiclabs/hardhat-waffle');
+require("hardhat-tracer");
 require('dotenv').config();
+require("hardhat-gas-reporter");
 
 module.exports = {
   solidity: "0.8.9",
   networks: {
     // Ethereum environmentns
     // Binance chain
-    bsc_testnet: {
+    bnb_testnet: {
       url: 'https://data-seed-prebsc-1-s1.binance.org:8545',
       chainId: 97,
       accounts: [`0x${process.env.PRIVATE_KEY}`],
@@ -28,6 +30,11 @@ module.exports = {
     localhost: {
       url: "http://127.0.0.1:8545",
       accounts: [process.env.PRIVATE_KEY_LOCAL]
+    },
+    optimism_testnet: {
+      url: "https://goerli.optimism.io",
+      accounts: [process.env.PRIVATE_KEY],
+      chainId: 420
     }
   }
 }
