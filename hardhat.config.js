@@ -4,7 +4,7 @@ require('dotenv').config();
 require("hardhat-gas-reporter");
 
 module.exports = {
-  solidity: "0.8.9",
+  solidity: "0.8.17",
   networks: {
     // Ethereum environmentns
     // Binance chain
