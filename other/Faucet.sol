@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
+pragma solidity 0.8.17;
 
 
 interface ERC20 {
@@ -19,7 +19,8 @@ contract Faucet {
     }
 
     function requestTokens() public {
-        tokenInstance.transfer(msg.sender, tokenAmount);
+        uint256 decAmount = tokenAmount * 10 ** 18;
+        tokenInstance.transfer(msg.sender, decAmount) ;
         emit FaucetReceived(msg.sender);
     }
     

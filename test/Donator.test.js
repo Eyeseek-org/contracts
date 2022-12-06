@@ -3,6 +3,11 @@ const {expect} = require("chai")
 
 let user, donationToken, donation, fund, cancelUser, receiver
 
+// Run tests with tracer
+// npx hardhat test --trace      # shows logs + calls
+// npx hardhat test --fulltrace  # shows logs + calls + sloads + sstores
+// npx hardhat test --trace --opcodes ADD,SUB # shows any opcode specified
+
 
 beforeEach(async function () {
     // environment preparation, deploy token & staking contracts
@@ -25,13 +30,8 @@ beforeEach(async function () {
     usdtToken.transfer(user.address, 5000000000)
     usdtToken.transfer(fund.address, 5000000000)
 
-    const Dai = await ethers.getContractFactory("Token")
-    daiToken = await Dai.deploy()
-    daiToken.transfer(user.address, 5000000000)
-    daiToken.transfer(user.address, 5000000000)
-
     const Donation = await ethers.getContractFactory("Funding")
-    donation = await Donation.deploy( donationToken.address, usdtToken.address, daiToken.address)
+    donation = await Donation.deploy(donationToken.address, usdtToken.address)
     stakeAmount = ethers.utils.parseUnits("1000000", 1)
     donationToken.transfer(user.address, stakeAmount)
     donationToken.transfer(cancelUser.address, 50000)
@@ -42,6 +42,8 @@ beforeEach(async function () {
     multiToken = await Multi.deploy()
     multiToken.safeTransferFrom(multiToken.address, user.address, 0, 1, "")
 
+
+
     await donation.createZeroData();
     const fundAmount = 500000000
     await donation.connect(fund).createFund(fundAmount)
@@ -50,68 +52,58 @@ beforeEach(async function () {
 })
 
 describe("Chain donation testing", async function () {
-    // it("Check funds + microfunds multiplication", async function () {
+    it("Check funds + microfunds multiplication", async function () {
 
-    //     const [user, fund] = await ethers.getSigners()
+        const [user, fund] = await ethers.getSigners()
 
-    //     const mainfund = 50000 
-    //     const microfund1 = 500
-    //     const microfund2 = 500
-    //     const microfund3 = 500
-    //     const microfund4 = 500
-    //     const microfund5 = 50
+        const mainfund = 50000 
+        const microfund = 500
+        const microfund2 = 500
+        const microfund3 = 500
+        const microfund4 = 500
+        const microfund5 = 50
 
-    //     const secondFund = 1500 
+        const secondFund = 1500 
 
-    //     const initial1 = 20
-    //     const initial2 = 20
-    //     const initial3 = 20
+        const initial1 = 20
+        const initial2 = 20
+        const initial3 = 20
 
-    //     const allowance = microfund1 + microfund2 + microfund3 + microfund4 + microfund5 + initial1 + initial2 + initial3
-    //     console.log(allowance)
+        const donateAmount = 1
 
-    //     await donation.connect(fund).createFund(mainfund)
-    //     await donation.connect(fund).createFund(secondFund)
-    //     await donationToken.approve(donation.address, allowance, {from: user.address})
-    //      // 3 Inverstors created microfund with initial donation of 20, 1 investor with 0
-    //     await donation.contribute(microfund1,initial1,0,1, {from: user.address})
-    //     await donation.contribute(microfund2,initial2,0,1, {from: user.address})
-    //     await donation.contribute(microfund3,initial3,0,1, {from: user.address})
-    //     await donation.contribute(microfund4,0,0, {from: user.address})
-    //     // This microfund won't be calcuated due to lack of fund
-    //     await donation.contribute(microfund5,0,0,1, {from: user.address})
-    //     // Calculate donation impact
-    //     const prediction = await donation.calcOutcome(0,100)
-    //     expect(prediction).to.equal(500)
-    //     console.log("Prediction: " + prediction)
+        const allowance = microfund + microfund2 + microfund3 + microfund4 + microfund5 + initial1 + initial2 + initial3
 
-    //     // Verify current balance after initial donations
-    //     const info = await donation.getFundInfo(0)
-    //     console.log("Initial fund balance is", info.balance)
-    //     expect(info.balance).to.equal(120)
+        await donation.connect(fund).createFund(mainfund)
+        await donation.connect(fund).createFund(secondFund)
+        await donationToken.approve(donation.address, allowance, {from: user.address})
+         // 3 Microfunds and 2 donations to involve
+        await donation.contribute(0,donateAmount,1,1,0, {from: user.address})
+        await donation.contribute(microfund,0,1,1,0, {from: user.address})
+        await donation.contribute(microfund,0,1,1,0, {from: user.address})
+        await donation.contribute(microfund,0,1,1,0, {from: user.address})
+        await donation.contribute(0,donateAmount,1,1,0, {from: user.address})
 
-    //     // Check multiplier, 4x multiplier from microfunds + donation
-    //     await donationToken.approve(donation.address, 100, {from: user.address})
-    //     await donation.contribute(0,100, 0,1, {from: user.address})
-    //     const info2 = await donation.getFundInfo(0)
-    //     expect(info2.balance).to.equal(620)
-    //     console.log("Total fund balance is", info2.balance)
+        // const backers = await donation.getBackerAddresses(1)
+        // expect(backers.length).to.equal(2)
+
+        // Check multiplier, 4x multiplier from microfunds + donation
+        const prediction = await donation.calcOutcome(1,100)
+        expect(prediction).to.equal(400)
 
 
-
-    //     // Validate view functions
-    //     const microfunds = await donation.getConnectedMicroFunds(0)
-    //     expect(microfunds).to.equal(5)
-    //     console.log("Total Microfunds: " + microfunds)
+        // Expected 3 microfunds
+        const microfunds = await donation.getConnectedMicroFunds(1)
+        expect(microfunds).to.equal(3)
 
 
-    //     // Test distribution after completion
-    //     // Closing microfunds, closing funds 
-    //     await donation.distribute(0);
-    //     const fundBalance = await donationToken.balanceOf(fund.address)
-    //     console.log("Fund balance after "+fundBalance)
+        // Test distribution after completion
+        // Closing microfunds, closing funds, token contract should be free of tokens
+        // Distribute nefunguje
+        await donation.distribute(1);
+        const fundBalance = await donationToken.balanceOf(donation.address)
+        expect(fundBalance).to.equal(0)
 
-    // })
+    })
     it("Cancel fund - Distributes resources back", async function () {
         const [user, fund] = await ethers.getSigners()
         const fundAmount = 500000000
@@ -121,36 +113,17 @@ describe("Chain donation testing", async function () {
         await donation.contribute(0,fundAmount,1,1,0, {from: user.address})
         await donation.contribute(fundAmount,fundAmount,1,2,0, {from: user.address})
 
-        await usdtToken.approve(donation.address, 500, {from: user.address})
-        await donation.createTokenReward(1,50,500,usdtToken.address, {from: user.address})
+        await usdcToken.approve(donation.address, 500, {from: user.address})
+        await donation.createReward(1,1,100,usdcToken.address,1, {from: user.address})
+        await donation.createReward(1,50,1,usdcToken.address,0, {from: user.address})
+        // Debug reward
 
         const multiBalance = await multiToken.balanceOf(user.address, 0)
         console.log("Multi balance before: " + multiBalance)
         await multiToken.setApprovalForAll(donation.address, true, {from: user.address})
-   //     await donation.createNftReward(1,1, multiToken.address, 0, {from: user.address})
+    //    await donation.createReward(1,1, multiToken.address, 0, {from: user.address})
 
-
-
-        await donation.connect(fund).cancelFund(0);
-        const balanceAfter = await donationToken.balanceOf(user.address)
-        expect(balanceBefore).to.equal(balanceAfter)
-        const contractBalance = await donationToken.balanceOf(donation.address)
-        expect(contractBalance).to.equal(0)
-
-    })
-    it("Fund distribution", async function () {
-        const [user, fund] = await ethers.getSigners()
-        const fundAmount = 500000000
-        const balanceBefore = await donationToken.balanceOf(user.address)
-        await donationToken.approve(donation.address, fundAmount, {from: user.address})
-        await donation.contribute(0,fundAmount,1,1,0, {from: user.address})
-        await donation.connect(fund).distribute(1);
-        const balanceAfter = await donationToken.balanceOf(user.address)
-        expect(balanceBefore).not.to.equal(balanceAfter)
-        const fundAfter = await donationToken.balanceOf(fund.address)
-        expect(balanceBefore).not.to.equal(fundAfter)
-        const contractBalance = await donationToken.balanceOf(donation.address)
-        expect(contractBalance).to.equal(0)
+        await donation.cancelFund(1, {from: user.address});
     })
 })
 
