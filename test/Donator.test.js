@@ -123,7 +123,7 @@ describe("Chain donation testing", async function () {
         await multiToken.setApprovalForAll(donation.address, true, {from: user.address})
     //    await donation.createReward(1,1, multiToken.address, 0, {from: user.address})
 
-        await donation.cancelFund(0, {from: user.address});
+        await donation.cancelFund(1, {from: user.address});
     })
 })
 

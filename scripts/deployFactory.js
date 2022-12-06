@@ -1,19 +1,13 @@
-async function main() {
-    const Box = await ethers.getContractFactory("Box");
-    const box = await Box.deploy();
-    await box.deployed();
-  
-    const BoxFactory = await ethers.getContractFactory("BoxFactory");
-    const bf = await BoxFactory.deploy(box.address);
-    await bf.deployed();
-  
-    console.log(box.address, "Box contract address");
-    console.log(bf.address, "Minimal Proxy Box Factory contract address");
+deployFactory.js
+
+const main = async () => {
+    const Factory = await ethers.getContractFactory("DeployFactory");
+    const factory = await Factory.deploy();
+    await factory.deployed();
+    console.log("Factory deployed to:", factory.address);
   }
   
-  main()
-    .then(() => process.exit(0))
-    .catch((error) => {
-      console.error(error);
-      process.exit(1);
-    });
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

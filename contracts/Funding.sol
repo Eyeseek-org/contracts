@@ -1,46 +1,38 @@
-// SPDX-License-Identifier: MIT
+//SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-//import "hardhat/console.sol";
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+
 /// @title Chain donation contract
 /// @author Michal Kazdan
 
+// import "hardhat/console.sol";
 
 contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
     IERC20 usdc;
     IERC20 usdt;
 
-    address private deployer;
     address[] private tokens;
-
 
     error FundInactive(uint256 fund);
     error InvalidAmount(uint256 amount);
-   // error InvalidAddress(address addr);
+    // error InvalidAddress(address addr);
     error RewardFull(uint256 rewardId);
     error LowBalance(uint256 balance);
     error Deadline(bool deadline);
-   
 
-    /// @notice Use modifiers to check when deadline is passed
-    modifier isDeadlinePassed(uint256 _id) {
-        if (block.timestamp > funds[_id].deadline) {
-            revert Deadline(true);
-        }
-        _;
-    }
-
+    /// @dev Structs represents core application data, serves as primary database
     /// @notice Main crowdfunding fund
     struct Fund {
         uint256 id;
         address owner;
         uint256 balance;
-        uint256 deadline; // Timespan for crowdfunding to be active
+        uint256 deadline; /// @dev Timespan for crowdfunding to be active
         uint256 state; ///@dev 0=Canceled, 1=Active, 2=Finished
         uint256 level1;
         uint256 usdcBalance;
@@ -71,7 +63,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         uint256 currency; ///@notice 0=Eye, 1=USDC, 2=USDT, 3=DAI(descoped)
     }
 
-    /// @dev Struct for ERC1155 NFT rewards
+    /// @dev Struct for rewward metadata connected with a fund 
     struct RewardPool {
         uint256 rewardId;
         uint256 fundId;
@@ -84,6 +76,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         uint256 state; ///@dev 1=NFT active, 2=ERC20 Active, 3=Distributed 4=Canceled
     }
 
+    /// @dev Struct for Reward items connected with a reward pool
     struct Reward {
         uint256 rewardId;
         uint256 rewardItemId;
@@ -97,13 +90,14 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
     RewardPool[] public rewards;
     Reward[] public rewardList;
 
+    /// @dev Construcor contains main supported stablecoins for each blockchain, typically USDC and USDT
     constructor(address usdcAddress, address usdtAddress) 
      {
         usdc = IERC20(usdcAddress);
         usdt = IERC20(usdtAddress);
     }
 
-    /// @notice fund supports multicurrency deposits
+    /// @notice Main function to create crowdfunding project
     function createFund(
         uint256 _level1
     ) public {
@@ -111,7 +105,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         /// @param _currency - token address, fund could be created in any token, this will be also required for payments // For now always 0
         /// @param _level1 - 1st (minimum) level of donation accomplishment, same works for all levels.
         uint256 _deadline = block.timestamp + 30 days; 
-      //  if (msg.sender == address(0)) revert InvalidAddress(msg.sender);
+        /// if (msg.sender == address(0)) revert InvalidAddress(msg.sender);
         if (_level1 < 0) revert InvalidAmount(_level1);
         funds.push(
             Fund({
@@ -132,6 +126,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         );
     }
 
+    /// @notice Function to donate to a project
     function contribute(
         uint256 _amountM,
         uint256 _amountD,
@@ -151,13 +146,10 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         if (_currency == 1) {
             usdc.transferFrom(msg.sender, address(this), _amountD + _amountM);
             funds[_id].usdcBalance +=  _amountD;
-            funds[_id].backerNumber += 1;
         } else if (_currency == 2)  {
             usdt.transferFrom(msg.sender, address(this), _amountD + _amountM);
-            funds[_id].usdtBalance +=  _amountD;
-            funds[_id].backerNumber += 1;
+            funds[_id].usdcBalance +=  _amountD;
         } 
-        funds[_id].balance += _amountD;
         /// @notice If donated, fund adds balance and related microfunds are involed
         /// @notice Updated the direct donations
         if (_amountD > 0) {
@@ -171,6 +163,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
                     currency: _currency /// TBD flexible in last stage
                 })
             );
+             funds[_id].backerNumber += 1;
             ///@notice Add total drained amount to the donated event for stats
             uint256 drained = 0;
             drained = drainMicro(_id, _amountD);
@@ -192,11 +185,12 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
             funds[_id].micros += 1;
             emit MicroCreated(msg.sender, _amountM, _id, _currency, microFunds.length);
         }
+        funds[_id].balance += _amountD;
         rewardCharge(_rewardId);
     }
 
     ///@notice Helper reward pool function to gather non-token related rewards
-    ///@dev Need to create fake fund 0, with fake pool 0
+    ///@dev Need to create fake fund 0, with fake pool 0, otherwise contribution won't work universally
     function createZeroData() public onlyOwner {
         funds.push(
             Fund({
@@ -227,7 +221,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         );
     }
 
-    /// @notice Internal function to achieve reward eligibility in case contribution offers this option
+    /// @notice Charge rewards during contribution process
     function rewardCharge (uint256 _rewardId) internal {
         if (rewards[_rewardId].state != 1) revert FundInactive(_rewardId);
         if (rewards[_rewardId].actualNumber >= rewards[_rewardId].totalNumber) revert RewardFull(_rewardId);
@@ -245,9 +239,9 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         }
     }
 
+    /// @notice If microfunds are deployed on project, contribution function will drain them
     function drainMicro(uint256 _id, uint256 _amount) internal returns(uint256) {
         /// @notice Find all active microfunds related to the main fund and join the chain donation
-        /// @notice Currency agnostic as all using stablecoin, if backer donates in USDC, microfund in USDT will join 
         uint256 totalDrained = 0;
         for (uint256 i = 0; i < microFunds.length; i++) {
             if (
@@ -278,7 +272,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         return totalDrained;
     }
 
-    ///@notice Lock ERC20 tokens as crowdfunding reward - utility tokens, governance tokens etc.
+    ///@notice Lock tokens as crowdfunding reward - ERC20/ERC1155
     ///@notice One project could have multiple rewards
     function createReward(
         uint256 _fundId,
@@ -348,7 +342,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
         );
     }
 
-    // Saving space
+    // Saving space -> will be implemented after diamond
     // function batchDistribute(IERC20 _rewardTokenAddress) public onlyOwner nonReentrant {
     //     for (uint256 i = 0; i < funds.length; i++) {
     //         /// @notice - Only active funds with achieved minimum are eligible for distribution
@@ -447,11 +441,10 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
             }
     }  
 
-
+    /// @notice Internal universal function to distribute resources for each currency
     function distributeUni(uint256 _id, uint256 _fundBalance, uint256 _currency, IERC20 _token) internal  {
              /// @notice Take 1% fee to Eyeseek treasury, if amount <100 tak 0%
-             /// Reentrancy
-             address feeAddress = 0xc21223249CA28397B4B6541dfFaEcC539BfF0c59; /// TBD - change to DAO address
+            address feeAddress = 0xc21223249CA28397B4B6541dfFaEcC539BfF0c59; /// TBD - change to DAO address 
             uint256 fee = (_fundBalance * 1) / 100;
             uint256 gain = _fundBalance - fee;
             _token.approve(address(this), _fundBalance);
@@ -487,50 +480,53 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
     function cancelFund(uint256 _id) public nonReentrant onlyOwner {
         if (funds[_id].state != 1) revert FundInactive(_id);
         funds[_id].state = 0;
-            if (funds[_id].usdcBalance > 0){
-                cancelUni(_id, funds[_id].usdcBalance, 1, usdc);
-                funds[_id].usdcBalance = 0; 
-            }
-            if (funds[_id].usdtBalance > 0){
-                cancelUni(_id, funds[_id].usdtBalance, 2, usdt);
-                funds[_id].usdtBalance = 0; 
-            }           
-            /// @notice Distribute token reward to eligible users
-            for (uint256 i = 0; i < rewards.length; i++) {
-                if (rewards[i].totalNumber > 0){
-                    if (rewards[i].state == 1){
-                        IERC1155 rewardNft = IERC1155(rewards[i].contractAddress);
-                        rewardNft.setApprovalForAll(funds[_id].owner, true);
-                        rewardNft.safeTransferFrom(
-                            address(this),
-                            funds[_id].owner,
-                            rewards[i].nftId,
-                            rewards[i].totalNumber,
-                            ""
-                            );
-                    } else if (rewards[i].state == 2){
-                        IERC20 rewardToken = IERC20(rewards[i].contractAddress);
-                        rewardToken.approve(funds[_id].owner, rewards[i].erc20amount);
-                        rewardToken.transferFrom(
-                            address(this),
-                            funds[_id].owner,
-                            rewards[i].erc20amount 
-                        );
-                    }
-            } }
+        if (funds[_id].usdcBalance > 0){
+            cancelUni(_id, funds[_id].usdcBalance, 1, usdc);
+            funds[_id].usdcBalance = 0; 
+        }
+        if (funds[_id].usdtBalance > 0){
+            cancelUni(_id, funds[_id].usdtBalance, 2, usdt);
+            funds[_id].usdtBalance = 0; 
+        }           
+            
+        for (uint256 i = 0; i < rewards.length; i++) {
+            if (rewards[i].totalNumber > 0 && rewards[i].fundId == _id && rewards[i].state == 2) {
+                IERC1155 rewardNft = IERC1155(rewards[i].contractAddress);
+                rewardNft.setApprovalForAll(funds[_id].owner, true);
+                rewardNft.safeTransferFrom(
+                    address(this),
+                    funds[_id].owner,
+                    rewards[i].nftId,
+                    rewards[i].totalNumber,
+                    ""
+                );
+        } else if (rewards[i].totalNumber > 0 && rewards[i].state == 1 && rewards[i].fundId == _id ) {
+            /// TBD rewards[i].fundId throws error
+                console.log(rewards[i].fundId);
+                IERC20 rewardToken = IERC20(rewards[i].contractAddress);
+                console.log('done erc');
+                console.log(rewards[i].erc20amount);
+                rewardToken.approve(funds[_id].owner, rewards[i].erc20amount);
+                console.log('Approved');
+                rewardToken.transferFrom(
+                    address(this),
+                    funds[_id].owner,
+                    rewards[i].erc20amount 
+                    );
+                }
+            } 
     }
         
 
     ///@notice - Cancel the fund and return the resources to the microfunds, universal for all supported currencies
-    function cancelUni(uint256 _id, uint256 _fundBalance, uint256 _currency, IERC20 _token ) internal nonReentrant {
-            require(msg.sender == address(this));
+    function cancelUni(uint256 _id, uint256 _fundBalance, uint256 _currency, IERC20 _token ) internal {
             for (uint256 i = 0; i < microFunds.length; i++) {
                 if (microFunds[i].fundId == _id && microFunds[i].state == 1 && microFunds[i].currency == _currency) {
                     /// @notice Send back the remaining amount to the microfund owner
-                    funds[_id].balance -= microFunds[i].cap;
-                    microFunds[i].state = 4;
-                    _fundBalance -= microFunds[i].cap;
                     if (microFunds[i].cap > microFunds[i].microBalance) {
+                        microFunds[i].state = 4;
+                        funds[_id].balance -= microFunds[i].microBalance;
+                        _fundBalance -= microFunds[i].microBalance;
                         _token.approve(address(this), microFunds[i].cap);
                         _token.transferFrom(
                             address(this),
@@ -546,7 +542,6 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
                     }
                 }
             }
-        
         ///@dev Fund states - 0=Created, 1=Distributed, 2=Refunded
             for (uint256 i = 0; i < donations.length; i++) {
                 if (donations[i].fundId == _id && donations[i].state == 0 && donations[i].currency == _currency) {
@@ -572,7 +567,6 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
     // ------ VIEW FUNCTIONS ----------
 
     /// @notice - Get total number of microfunds connected to the ID of fund
-    /// @param _index - ID of the fund
     function getConnectedMicroFunds(uint256 _index)
         public
         view
@@ -588,8 +582,6 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
     }
 
     /// @notice - Calculate amounts of all involved microfunds in the donation
-    /// @param _index - ID of the fund
-    /// @param _amount - Amount of the donation
     function calcOutcome(uint256 _index, uint256 _amount)
         public
         view
@@ -644,6 +636,7 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
     //         return rewardReceivers;
     //     }
 
+    ///@notice list of backer addresses for specific fund
     function getBackerAddresses(uint256 _id)
         public
         view
@@ -677,6 +670,14 @@ contract Funding is Ownable, ERC1155Holder, ReentrancyGuard  {
     //     }
     //     return rewardNumber;
     // }
+
+        /// @notice Use modifiers to check when deadline is passed
+    modifier isDeadlinePassed(uint256 _id) {
+        if (block.timestamp > funds[_id].deadline) {
+            revert Deadline(true);
+        }
+        _;
+    }
 
     event FundCreated(uint256 id);
     event MicroCreated(address owner, uint256 cap, uint256 fundId, uint256 currency, uint256 microId);
